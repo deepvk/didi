@@ -92,9 +92,7 @@ def main():
     dataset = ConvAI2CandidatesDataset(convai2)
     dataloader = DataLoader(dataset, batch_size=args.batch_size)
 
-    tokenizer = AutoTokenizer.from_pretrained(
-        args.model, truncation_side="left", padding_side="left"
-    )
+    tokenizer = AutoTokenizer.from_pretrained(args.model, truncation_side="left", padding_side="left")
     model = AutoModelForSeq2SeqLM.from_pretrained(args.model)
 
     device = "cuda" if torch.cuda_is_available() else "cpu"
@@ -121,9 +119,7 @@ def main():
             output = tokenizer.batch_decode(reply_ids, skip_special_tokens=True)
             calc_metrics(output, candidates, history)
 
-    print(
-        f"F1-score: {np.array(history['f1']).mean()}\nHit@1: { np.array(history['hit']).mean()}"
-    )
+    print(f"F1-score: {np.array(history['f1']).mean()}\nHit@1: { np.array(history['hit']).mean()}")
 
 
 if __name__ == "__main__":
