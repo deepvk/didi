@@ -6,55 +6,49 @@ import numpy as np
 
 import torch
 from torch.utils.data import Dataset, DataLoader
-from torchtext.data.metrics import bleu_score
 
 from tqdm import tqdm
 
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
 
-class ConvAI2CandidatesDataset(Dataset):
-    """ConvAI2 Candidates Dataset"""
+class ConvAI2Dataset(Dataset):
+    """ConvAI2 Dataset"""
 
-    def __init__(self, dataset):
+    def __init__(self, path):
         """
         Args:
-            dataset (DatasetDict): ConvAI2 dataset from huggingface
+            path (str): File path to ConvAI2 dataset
         """
 
-        np.random.seed(42)
-        candidates_dataset = {"context": [], "candidates": []}
-        ids = list(range(len(dataset["train"])))
+        persona = "your persona"
+        context = ""
 
-        for i, dialog in (pbar := tqdm(enumerate(dataset["train"]))):
-            pbar.set_description("Creating dataset")
-            context = ""
+        candidates = []
 
-            for utterance in dialog["dialog"]:
-                if utterance["sender_class"] == "Bot" and context:
-                    candidates_dataset["context"].append(context)
-                    candidates = [utterance["text"]]
-                    dialog_ids = [i]
+        dataset = {"context": [], "candidates": [], "gt": []}
 
-                    while i in dialog_ids:
-                        dialog_ids = np.random.choice(ids, size=19, replace=False)
+        with open(path, "r") as f:
+            for line in f.readlines():
+                if line[2 : 2 + len(persona)] == persona:
+                    context = ""
+                    candidates = []
+                    continue
 
-                    for id in dialog_ids:
-                        other_dialog = dataset["train"][int(id)]["dialog"]
-                        length = len(other_dialog)
-                        text = ""
-                        sender = "Human"
+                else:
+                    prev_candidates = candidates
 
-                        while sender == "Human":
-                            j = np.random.randint(length)
-                            text = other_dialog[j]["text"]
-                            sender = other_dialog[j]["sender"]
-                        candidates.append(text)
+                    utterance1, utterance2, _, candidates = line[2:].split("\t")
+                    candidates = candidates.split("|")[:-1]
 
-                    candidates_dataset["candidates"].append(candidates)
+                    if prev_candidates:
+                        dataset["context"].append(context)
+                        dataset["candidates"].append(candidates)
+                        dataset["gt"].append(utterance1)
 
-                context += "<s>" + utterance["text"] + "</s>"
-        self.dataset = candidates_dataset
+                    context += "<s>" + utterance1 + "</s>" + "<s>" + utterance2 + "</s>"
+
+        self.dataset = dataset
 
     def __len__(self):
         return len(self.dataset["context"])
@@ -63,41 +57,55 @@ class ConvAI2CandidatesDataset(Dataset):
         sample = {
             "context": self.dataset["context"][idx],
             "candidates": self.dataset["candidates"][idx],
+            "gt": self.dataset["gt"][idx],
         }
 
         return sample
 
 
-def calc_metrics(generated_batch, candidates_batch, history):
+def calc_metrics(generated_batch, candidates_batch, gt_batch, history):
     for i, candidates in enumerate(zip(*candidates_batch)):
-        bleus = []
-        generated = list(generated_batch[i].split())
+        generated = set(generated_batch[i].split())
+
+        f1s = []
+        candidates = (gt_batch[i], *candidates)
 
         for candidate in candidates:
-            f1s.append(bleu_score([generated], [candidate], max_n=1, weights=[1]))
+            candidate = set(candidate.split())
 
-        history["hit"].append(int(np.array(bleus).argmax() == 0))
-        history["bleu"].append(bleus[0])
+            precision = len(generated & candidate) / len(generated)
+            recall = len(generated & candidate) / len(candidate)
+
+            if precision + recall:
+                f1 = 2 * precision * recall / (precision + recall)
+            else:
+                f1 = 0
+
+            f1s.append(f1)
+
+        history["hit"].append(int(np.array(f1s).argmax() == 0))
+        history["f1"].append(f1s[0])
 
 
 def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-m", "--model")
-    parser.add_argument("-b", "--batch_size", type=int, default=64)
+    parser.add_argument("-p", "--path")
+    parser.add_argument("-b", "--batch_size", type=int, default=32)
+    parser.add_argument("-s", "--side", default="left")
+    parser.add_argument("-l", "--max_context_len", type=int, default=128)
 
     args = parser.parse_args()
 
-    convai2 = load_dataset("conv_ai_2")
-    dataset = ConvAI2CandidatesDataset(convai2)
+    dataset = ConvAI2Dataset(args.path)
     dataloader = DataLoader(dataset, batch_size=args.batch_size)
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model, truncation_side="left", padding_side="left")
+    tokenizer = AutoTokenizer.from_pretrained(args.model, truncation_side=args.side, padding_side=args.side)
     model = AutoModelForSeq2SeqLM.from_pretrained(args.model)
 
-    device = "cuda" if torch.cuda_is_available() else "cpu"
-
-    history = {"bleu": [], "hit": []}
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    history = {"f1": [], "hit": []}
 
     model = model.to(device)
 
@@ -107,19 +115,16 @@ def main():
             pbar.set_description("Calculating metrics")
             context = batch["context"]
             candidates = batch["candidates"]
+            gt = batch["gt"]
 
-            inputs = tokenizer(
-                context,
-                return_tensors="pt",
-                max_length=128,
-                truncation=True,
-                padding=True,
-            ).to(device)
+            inputs = tokenizer(context, return_tensors="pt", max_length=args.max_context_len, truncation=True, padding=True).to(device)
             reply_ids = model.generate(**inputs, max_length=64)
             output = tokenizer.batch_decode(reply_ids, skip_special_tokens=True)
-            calc_metrics(output, candidates, history)
+            calc_metrics(output, candidates, gt, history)
 
-    print(f"BLEU score: {np.array(history['bleu']).mean()}\nHit@1: { np.array(history['hit']).mean()}")
+    print(
+        f"F1-score: {np.array(history['f1']).mean()}\nHit@1: { np.array(history['hit']).mean()}"
+    )
 
 
 if __name__ == "__main__":
