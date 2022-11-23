@@ -117,14 +117,14 @@ def main():
             candidates = batch["candidates"]
             gt = batch["gt"]
 
-            inputs = tokenizer(context, return_tensors="pt", max_length=args.max_context_len, truncation=True, padding=True).to(device)
+            inputs = tokenizer(
+                context, return_tensors="pt", max_length=args.max_context_len, truncation=True, padding=True
+            ).to(device)
             reply_ids = model.generate(**inputs, max_length=64)
             output = tokenizer.batch_decode(reply_ids, skip_special_tokens=True)
             calc_metrics(output, candidates, gt, history)
 
-    print(
-        f"F1-score: {np.array(history['f1']).mean()}\nHit@1: { np.array(history['hit']).mean()}"
-    )
+    print(f"F1-score: {np.array(history['f1']).mean()}\nHit@1: { np.array(history['hit']).mean()}")
 
 
 if __name__ == "__main__":
