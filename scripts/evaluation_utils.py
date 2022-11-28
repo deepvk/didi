@@ -1,3 +1,5 @@
+import argparse
+
 import numpy as np
 
 import torch
@@ -5,6 +7,22 @@ from torch import nn
 from torch.utils.data import Dataset
 
 from tqdm import tqdm
+
+
+def configure_arg_parser():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("-m", "--model", help="Seq2seq model name from huggingface")
+    parser.add_argument("-p", "--path", help="Path to dataset for evaluation")
+    parser.add_argument("-bs", "--batch_size", type=int, default=64, help="Batch size for evaluation")
+    parser.add_argument("-s", "--side", default="left", help="Side of truncation and padding for tokenizer")
+    parser.add_argument("-cl", "--max_context", type=int, default=256, help="Max length of context fed into model")
+    parser.add_argument("-gl", "--max_gen", type=int, default=64, help="Max length of generated output")
+    parser.add_argument("-d", "--device", default="cpu", help="Device on which to evaluate the model")
+    parser.add_argument("-ds", "--do_sample", default=True, help="parameter for generation method")
+    parser.add_argument("-nb", "--num_beams", default=4, help="Parameter for generation method")
+
+    return parser
 
 
 class ConvAI2Dataset(Dataset):
@@ -82,11 +100,7 @@ def calculate_hits_ppl(model, tokenizer, dataset, max_len, device):
             pad_mask = target_ids.eq(0)
             target_ids[pad_mask] = -100
 
-            model_output = model(
-                input_ids.repeat(len(candidates), 1),
-                decoder_input_ids=out_ids,
-                labels=target_ids,
-            )
+            model_output = model(input_ids.repeat(len(candidates), 1), decoder_input_ids=out_ids, labels=target_ids)
 
             pred_logits = model_output.logits
 
@@ -101,7 +115,6 @@ def calculate_hits_ppl(model, tokenizer, dataset, max_len, device):
 
             hits.append(perplexity_batch.argmin().eq(0).item())
             ppl.append(perplexity_batch[0].item())
-            break
 
     return np.round(np.mean(hits) * 100, 1), np.round(np.mean(ppl), 2)
 
@@ -145,6 +158,5 @@ def calculate_f1(model, tokenizer, dataloader, max_context_len, max_gen_len, do_
             generated = tokenizer.batch_decode(reply_ids, skip_special_tokens=True)
 
             f1 += calc_f1_score(generated, gts)
-            break
 
     return np.round(np.mean(f1) * 100, 2)
