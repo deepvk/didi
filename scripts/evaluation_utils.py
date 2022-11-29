@@ -100,7 +100,7 @@ def calculate_hits_ppl(model, tokenizer, dataset, max_len, device):
             pad_mask = target_ids.eq(0)
             target_ids[pad_mask] = -100
 
-            model_output = model(input_ids.repeat(len(candidates), 1), decoder_input_ids=out_ids, labels=target_ids)
+            model_output = model(input_ids, decoder_input_ids=out_ids, labels=target_ids)
 
             pred_logits = model_output.logits
 
