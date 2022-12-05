@@ -4,7 +4,7 @@ from torch.utils.data import Dataset
 class ConvAI2Dataset(Dataset):
     _PERSONA_PREFIX = "your persona"
 
-    def __init__(self, path: str):
+    def __init__(self, path):
         context = ""
 
         candidates = []
@@ -21,8 +21,8 @@ class ConvAI2Dataset(Dataset):
                 else:
                     prev_candidates = candidates
 
-                    utterance1, utterance2, _, candidates = line[2:].split("\t")
-                    candidates = candidates.split("|")[:-1]
+                    utterance1, utterance2, _, candidates_str = line[2:].split("\t")
+                    candidates = candidates_str.split("|")[:-1]
 
                     if prev_candidates:
                         dataset["context"].append(context)
