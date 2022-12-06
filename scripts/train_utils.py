@@ -33,15 +33,15 @@ def get_diffusion_variables(
 
     x_0 = model.get_embeddings(gt.input_ids)
     padding = pad_emb.repeat((x_0.shape[0], max_gen - x_0.shape[1], 1))
-    x_0 = torch.concat((x_0, padding), dim=1).to(device)
+    x_0 = torch.concat((x_0, padding), dim=1)
 
-    t = torch.randint(diffusion_steps, size=(1,)).to(device)
+    t = torch.randint(diffusion_steps, size=(1,))
 
     x_t = torch.sqrt(alphas_cumprod_prev[t]) * x_0 + torch.sqrt(1 - alphas_cumprod_prev[t]) * torch.normal(
         0, 1, size=x_0.shape
-    ).to(device)
+    )
 
-    return x_0, x_t, t
+    return x_0.to(device), x_t.to(device), t.to(device)
 
 
 def train_model(
