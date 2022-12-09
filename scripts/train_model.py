@@ -5,7 +5,7 @@ from transformers import AutoTokenizer
 
 from src.data.dataset import ConvAI2Dataset
 from src.diffusion.model import DiffusionTransformer
-from src.train_utils import train_model
+from src.diffusion.train_utils import train_model
 
 
 def configure_arg_parser():

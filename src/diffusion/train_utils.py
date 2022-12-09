@@ -3,8 +3,8 @@ import torch.nn.functional as F
 from torch import nn
 from tqdm import tqdm
 
-from src.diffusion.schedules import cosine_beta_schedule
-from src.diffusion.schedules import linear_beta_schedule
+from schedules import cosine_beta_schedule
+from schedules import linear_beta_schedule
 
 
 def configure_schedule(steps: int, schedule: str):
