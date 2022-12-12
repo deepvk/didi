@@ -66,7 +66,7 @@ def calculate_hits_ppl(model, dataloader, num_candidates: int, device: str):
             ppls.append(perplexity_batch[:, 0])
 
     hit = torch.concat(hits).float().mean().item()
-    ppl = torch.concat(ppls).float().median().item()
+    ppl = torch.concat(ppls).float().mean().item()
 
     return np.round(hit * 100, 1), np.round(ppl, 2)
 
