@@ -6,41 +6,47 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 
-def calculate_hits_ppl(model, tokenizer, dataset, max_len: int, device: str):
+def collate_gt(list_of_samples, tokenizer, max_context):
+    list_of_contexts = [it["context"] for it in list_of_samples]
+    batched_gts = [sample["candidates"][0] for sample in list_of_samples]
+
+    batched_context = tokenizer(
+        list_of_contexts, return_tensors="pt", max_length=max_context, truncation=True, padding=True
+    )
+
+    return batched_context, batched_gts
+
+
+def collate_candidates(list_of_samples, tokenizer, max_context, max_candidates):
+    list_of_contexts = [it["context"] for it in list_of_samples]
+    list_of_candidates = [it for sample in list_of_samples for it in sample["candidates"]]
+
+    batched_context = tokenizer(
+        list_of_contexts, return_tensors="pt", max_length=max_context, truncation=True, padding=True
+    ).input_ids
+
+    batched_candidates = tokenizer(
+        list_of_candidates, return_tensors="pt", max_length=max_candidates, truncation=True, padding=True
+    ).input_ids
+
+    return batched_context, batched_candidates
+
+
+def calculate_hits_ppl(model, dataloader, num_candidates: int, device: str):
     hits = []
-    ppl = []
+    ppls = []
 
     model.eval()
     with torch.no_grad():
-        for data in tqdm(dataset, desc="Calculating perplexity and hits"):
-            context = data["context"]
-            candidates = data["candidates"]
+        for b_context, b_candidates in tqdm(dataloader, desc="Calculating perplexity and hits"):
+            context_ids = b_context.repeat_interleave(num_candidates, dim=0).to(device)
+            candidates_ids = b_candidates.to(device)
 
-            input_ids = (
-                tokenizer(
-                    context,
-                    return_tensors="pt",
-                    max_length=max_len,
-                    truncation=True,
-                    padding=True,
-                )
-                .input_ids.repeat(len(candidates), 1)
-                .to(device)
-            )
-
-            out_ids = tokenizer(
-                candidates,
-                return_tensors="pt",
-                max_length=max_len,
-                truncation=True,
-                padding=True,
-            ).input_ids.to(device)
-
-            target_ids = out_ids.clone()
+            target_ids = candidates_ids.clone()
             pad_mask = target_ids.eq(0)
             target_ids[pad_mask] = -100
 
-            model_output = model(input_ids, decoder_input_ids=out_ids, labels=target_ids)
+            model_output = model(context_ids, decoder_input_ids=candidates_ids, labels=target_ids)
 
             pred_logits = model_output.logits
 
@@ -54,12 +60,15 @@ def calculate_hits_ppl(model, tokenizer, dataset, max_len: int, device: str):
                     * shift_attention_mask_batch
                 ).sum(1)
                 / shift_attention_mask_batch.sum(1)
-            )
+            ).view(-1, num_candidates)
 
-            hits.append(perplexity_batch.argmin().eq(0).item())
-            ppl.append(perplexity_batch[0].item())
+            hits.append(perplexity_batch.argmin(dim=1).eq(0))
+            ppls.append(perplexity_batch[:, 0])
 
-    return np.round(np.mean(hits) * 100, 1), np.round(np.mean(ppl), 2)
+    hit = torch.concat(hits).float().mean().item()
+    ppl = torch.concat(ppls).float().median().item()
+
+    return np.round(hit * 100, 1), np.round(ppl, 2)
 
 
 def calc_f1_score(gens, gts):
@@ -86,33 +95,24 @@ def calculate_f1(
     model,
     tokenizer,
     dataloader,
-    max_context_len,
     max_gen_len,
     do_sample,
     num_beams,
     device,
 ):
-    f1 = []
+    f1s = []
 
     model.eval()
     with torch.no_grad():
-        for data in tqdm(dataloader, desc="Calculating f1-score"):
-            context = data["context"]
-            candidates = data["candidates"]
+        for b_context, b_gts in tqdm(dataloader, desc="Calculating f1-score"):
+            b_context = b_context.to(device)
+            b_gts = b_gts
 
-            gts = [batch[0] for batch in candidates]
-
-            input = tokenizer(
-                context,
-                return_tensors="pt",
-                max_length=max_context_len,
-                truncation=True,
-                padding=True,
-            ).to(device)
-
-            reply_ids = model.generate(**input, do_sample=do_sample, num_beams=num_beams, max_length=max_gen_len)
+            reply_ids = model.generate(**b_context, do_sample=do_sample, num_beams=num_beams, max_length=max_gen_len)
             generated = tokenizer.batch_decode(reply_ids, skip_special_tokens=True)
 
-            f1 += calc_f1_score(generated, gts)
+            f1s += calc_f1_score(generated, b_gts)
 
-    return np.round(np.mean(f1) * 100, 2)
+    f1 = np.mean(f1s)
+
+    return np.round(f1 * 100, 2)
