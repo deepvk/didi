@@ -5,6 +5,7 @@ from transformers import AutoTokenizer
 
 from src.data.dataset import ConvAI2Dataset
 from src.diffusion.model import DiffusionTransformer
+from src.diffusion.train_utils import collate_gt
 from src.diffusion.train_utils import train_model
 
 
@@ -16,6 +17,7 @@ def configure_arg_parser():
     parser.add_argument("-bs", "--batch_size", type=int, default=64, help="Batch size for training")
     parser.add_argument("-s", "--side", default="left", help="Side of truncation and padding for tokenizer")
     parser.add_argument("-cl", "--max_context", type=int, default=256, help="Max length of context fed into diffusion")
+    parser.add_argument("-tl", "--max_gt", type=int, default=64, help="Max length of ground truth utterance")
     parser.add_argument("-gl", "--max_gen", type=int, default=64, help="Max length of generated output")
     parser.add_argument("-d", "--device", default="cpu", help="Device on which to evaluate the diffusion")
     parser.add_argument("-sc", "--schedule", default="linear", help="Noise schedule for diffusion diffusion")
@@ -25,9 +27,12 @@ def configure_arg_parser():
     return parser
 
 
-def main(model, path, batch_size, side, max_context, max_gen, device, schedule, diffusion_steps, num_epochs):
+def main(model, path, batch_size, side, max_context, max_gt, max_gen, device, schedule, diffusion_steps, num_epochs):
     dataset = ConvAI2Dataset(path)
-    dataloader = DataLoader(dataset, batch_size=batch_size)
+    dataloader = DataLoader(
+        dataset, batch_size=batch_size, collate_fn=lambda x: collate_gt(x, tokenizer, max_context, max_gt)
+    )
+
     tokenizer = AutoTokenizer.from_pretrained(model, truncation_side=side, padding_side=side)
 
     model = DiffusionTransformer(model, diffusion_steps).to(device)

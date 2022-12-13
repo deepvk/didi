@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from torch import nn
+import wandb
 from tqdm import tqdm
 
 from schedules import cosine_beta_schedule
@@ -44,6 +44,19 @@ def get_diffusion_variables(
     return x_0.to(device), x_t.to(device), t.to(device)
 
 
+def collate_gt(list_of_samples, tokenizer, max_context, max_gt):
+    list_of_contexts = [it["context"] for it in list_of_samples]
+    batched_gts = [sample["candidates"][0] for sample in list_of_samples]
+
+    batched_context = tokenizer(
+        list_of_contexts, return_tensors="pt", max_length=max_context, truncation=True, padding=True
+    )
+
+    batched_gts = tokenizer(batched_gts, return_tensors="pt", max_length=max_gt, truncation=True, padding=True)
+
+    return batched_context, batched_gts
+
+
 def train_model(
     model,
     tokenizer,
@@ -54,8 +67,11 @@ def train_model(
     max_context: int,
     max_gen: int,
     device: str,
+    project_name: str = "didi",
+    run_name: str = "Training diffusion",
 ):
-    mse = nn.MSELoss()
+    wandb.init(project=project_name, name=run_name)
+
     optimizer = torch.optim.Adam(model.parameters())
 
     alphas_cumprod_prev = configure_schedule(diffusion_steps, schedule)
@@ -88,7 +104,9 @@ def train_model(
 
             optimizer.zero_grad()
 
-            loss = mse(x_0_hat, x_0)
+            loss = F.mse_loss(x_0_hat, x_0)
+
+            wandb.log({"loss": loss.item()})
 
             loss.backward()
             optimizer.step()
