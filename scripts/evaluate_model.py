@@ -34,10 +34,10 @@ def configure_arg_parser():
 def main(
     model, path, batch_size_ppl, batch_size_f1, side, max_context, max_candidates, max_gen, device, do_sample, num_beams
 ):
-    dataset = ConvAI2Dataset(path)
-
     tokenizer = AutoTokenizer.from_pretrained(model, truncation_side=side, padding_side=side)
     model = AutoModelForSeq2SeqLM.from_pretrained(model).to(device)
+
+    dataset = ConvAI2Dataset(path, tokenizer)
 
     dataloader_hits_ppl = DataLoader(
         dataset,
@@ -49,7 +49,7 @@ def main(
         dataset, batch_size=batch_size_f1, collate_fn=lambda x: collate_gt(x, tokenizer, max_context)
     )
 
-    hits, ppl = calculate_hits_ppl(model, dataloader_hits_ppl, max_context, device)
+    hits, ppl = calculate_hits_ppl(model, dataloader_hits_ppl, dataset.num_candidates, device)
     f1 = calculate_f1(model, tokenizer, dataloader_f1, max_gen, do_sample, num_beams, device)
 
     print(f"Perplexity: {ppl}, Hits@1: {hits}, F1-score: {f1}")

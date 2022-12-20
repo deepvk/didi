@@ -4,12 +4,15 @@ from torch.utils.data import Dataset
 class ConvAI2Dataset(Dataset):
     _PERSONA_PREFIX = "your persona"
 
-    def __init__(self, path):
+    def __init__(self, path, tokenizer):
         context = ""
 
         candidates = []
 
         dataset = {"context": [], "candidates": []}
+
+        bos = tokenizer.bos_token
+        eos = tokenizer.eos_token
 
         with open(path, "r") as f:
             for line in f.readlines():
@@ -28,7 +31,9 @@ class ConvAI2Dataset(Dataset):
                         dataset["context"].append(context)
                         dataset["candidates"].append([utterance1] + candidates)
 
-                    context += "<s>" + utterance1 + "</s>" + "<s>" + utterance2 + "</s>"
+                        self.num_candidates = len(candidates) + 1
+
+                    context += bos + utterance1 + eos + bos + utterance2 + eos
 
         self.dataset = dataset
 
