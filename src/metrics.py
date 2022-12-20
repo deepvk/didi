@@ -1,9 +1,10 @@
 import numpy as np
-
 import torch
 import torch.nn.functional as F
-
 from tqdm import tqdm
+
+from diffusion.train_utils import get_xt
+from diffusion.train_utils import prepare_x0
 
 
 def calculate_hits_ppl(model, tokenizer, dataset, max_len: int, device: str):
@@ -116,3 +117,36 @@ def calculate_f1(
             f1 += calc_f1_score(generated, gts)
 
     return np.round(np.mean(f1) * 100, 2)
+
+
+def calculate_ce(model, val_dataloader, alphas_cumprod_prev, max_gen, device):
+    ces = []
+
+    model.eval()
+    with torch.no_grad():
+        for b_context, b_gt in tqdm(val_dataloader, desc="Validating"):
+            context = b_context.to(device)
+            gt = b_gt.to(device)
+
+            x_0 = prepare_x0(model, gt, max_gen, device)
+
+            for time in range(model.diffusion_steps - 1, 0, -1):
+                t = torch.tensor(time).to(device)
+
+                x_t = get_xt(x_0, alphas_cumprod_prev, t, device)
+
+                x_0, _ = model(
+                    encoder_input_ids=context.input_ids,
+                    encoder_attention_mask=context.attention_mask,
+                    decoder_inputs_embeds=x_t,
+                    time_ids=t,
+                )
+
+            pred_x_0 = get_xt(x_0, alphas_cumprod_prev, 0, device)
+
+            probs = model.classifier(pred_x_0)
+
+            target = F.pad(b_gt.input_ids, (0, probs.shape[1] - b_gt.input_ids.shape[1]), "constant", -100)
+            ces.append(F.cross_entropy(torch.transpose(probs, 1, 2), target).item())
+
+    return np.array(ces).mean()
