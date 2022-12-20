@@ -12,7 +12,7 @@ from src.metrics import calculate_hits_ppl
 def configure_arg_parser():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("-m", "--diffusion", help="Seq2seq diffusion name from huggingface")
+    parser.add_argument("-m", "--model", help="Transformer model name from huggingface")
     parser.add_argument("-p", "--path", help="Path to dataset for evaluation")
     parser.add_argument("-bs", "--batch_size", type=int, default=64, help="Batch size for evaluation")
     parser.add_argument("-s", "--side", default="left", help="Side of truncation and padding for tokenizer")

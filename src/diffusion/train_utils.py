@@ -33,7 +33,7 @@ def get_xt(x_0, alphas_cumprod_prev, t, device):
 def prepare_x0(model, gt, max_gen, device):
     pad_emb = model.pad_embedding
 
-    x_0 = model.get_embeddings(gt.input_ids)
+    x_0 = model.embeddings(gt.input_ids)
     padding = pad_emb.repeat((x_0.shape[0], max_gen - x_0.shape[1], 1)).to(device)
     x_0 = torch.concat((x_0, padding), dim=1)
 
@@ -74,47 +74,54 @@ def train_model(
     train_dataloader,
     val_dataloader,
     schedule: str,
-    num_epochs: int,
+    num_steps: int,
     max_gen: int,
     device: str,
     project_name: str = "didi",
-    run_name: str = "Training diffusion",
+    logging_step: int = 10,
 ):
-    wandb.init(project=project_name, name=run_name)
+    wandb.init(project=project_name)
 
     optimizer = torch.optim.Adam(model.parameters())
 
     alphas_cumprod_prev = configure_schedule(model.diffusion_steps, schedule).to(device)
 
     model.train()
-    for _ in tqdm(range(num_epochs), desc="Training"):
-        for b_context, b_gt in tqdm(train_dataloader, desc="Epoch"):
-            context = b_context.to(device)
-            gt = b_gt.to(device)
+    with tqdm(total=num_steps) as pbar:
+        while num_steps:
+            for b_context, b_gt in tqdm(train_dataloader):
+                context = b_context.to(device)
+                gt = b_gt.to(device)
 
-            x_0, x_t, t = get_diffusion_variables(model, gt, max_gen, alphas_cumprod_prev, device)
+                x_0, x_t, t = get_diffusion_variables(model, gt, max_gen, alphas_cumprod_prev, device)
 
-            x_0_hat, probs = model(
-                encoder_input_ids=context.input_ids,
-                encoder_attention_mask=context.attention_mask,
-                decoder_inputs_embeds=x_t,
-                time_ids=t,
-            )
+                x_0_hat, probs = model(
+                    encoder_input_ids=context.input_ids,
+                    encoder_attention_mask=context.attention_mask,
+                    decoder_inputs_embeds=x_t,
+                    time_ids=t,
+                )
 
-            optimizer.zero_grad()
+                optimizer.zero_grad()
 
-            mse = F.mse_loss(x_0_hat, x_0)
+                mse = F.mse_loss(x_0_hat, x_0)
 
-            target = F.pad(b_gt.input_ids, (0, probs.shape[1] - b_gt.input_ids.shape[1]), "constant", -100)
-            ce = F.cross_entropy(torch.transpose(probs, 1, 2), target)
+                target = F.pad(b_gt.input_ids, (0, probs.shape[1] - b_gt.input_ids.shape[1]), "constant", -100)
+                ce = F.cross_entropy(torch.transpose(probs, 1, 2), target)
 
-            wandb.log({"train_mse": mse.item(), "train_ce": ce.item()})
+                wandb.log({"train_mse": mse.item(), "train_ce": ce.item()}, step=logging_step)
 
-            loss = mse + ce
+                loss = mse + ce
 
-            loss.backward()
-            optimizer.step()
+                loss.backward()
+                optimizer.step()
 
-        wandb.log({"val_ce": calculate_ce(model, val_dataloader, alphas_cumprod_prev, max_gen, device)})
+                pbar.update(1)
+                num_steps -= 1
+
+                if not num_steps:
+                    break
+
+            wandb.log({"val_ce": calculate_ce(model, val_dataloader, alphas_cumprod_prev, max_gen, device)})
 
     return model
