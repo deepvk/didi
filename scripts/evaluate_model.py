@@ -18,7 +18,7 @@ def configure_arg_parser():
     parser.add_argument("-p", "--path", help="Path to dataset for evaluation")
     parser.add_argument("-bp", "--batch_size_ppl", type=int, default=64, help="Batch size for hits and ppl evaluation")
     parser.add_argument("-bf", "--batch_size_f1", type=int, default=8, help="Batch size for f1 evaluation")
-    parser.add_argument("-s", "--side", default="right", help="Side of truncation and padding for tokenizer")
+    parser.add_argument("-s", "--side", default="left", help="Side of truncation and padding for tokenizer")
     parser.add_argument("-cl", "--max_context", type=int, default=256, help="Max length of context fed into diffusion")
     parser.add_argument(
         "-sl", "--max_candidates", type=int, default=64, help="Max length of candidates fed into diffusion"
@@ -34,7 +34,7 @@ def configure_arg_parser():
 def main(
     model, path, batch_size_ppl, batch_size_f1, side, max_context, max_candidates, max_gen, device, do_sample, num_beams
 ):
-    tokenizer = AutoTokenizer.from_pretrained(model, truncation_side=side, padding_side=side)
+    tokenizer = AutoTokenizer.from_pretrained(model, truncation_side=side)
     model = AutoModelForSeq2SeqLM.from_pretrained(model).to(device)
 
     dataset = ConvAI2Dataset(path, tokenizer)
