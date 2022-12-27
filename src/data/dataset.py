@@ -25,11 +25,11 @@ class ConvAI2Dataset(Dataset):
                     prev_candidates = candidates
 
                     utterance1, utterance2, _, candidates_str = line[2:].split("\t")
-                    candidates = candidates_str.split("|")[:-1]
+                    candidates = [bos + candidate + eos for candidate in candidates_str.split("|")[:-1]]
 
                     if prev_candidates:
                         dataset["context"].append(context)
-                        dataset["candidates"].append([utterance1] + candidates)
+                        dataset["candidates"].append([bos + utterance1 + eos] + candidates)
 
                         self.num_candidates = len(candidates) + 1
 
