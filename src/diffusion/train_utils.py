@@ -5,7 +5,7 @@ from tqdm import tqdm
 
 from schedules import cosine_beta_schedule
 from schedules import linear_beta_schedule
-from src.metrics import calculate_ce
+from metrics import calculate_ce
 
 
 def configure_schedule(steps: int, schedule: str):
@@ -23,9 +23,11 @@ def configure_schedule(steps: int, schedule: str):
 
 
 def get_xt(x_0, alphas_cumprod_prev, t, device):
-    x_t = torch.sqrt(alphas_cumprod_prev[t]) * x_0 + (t > 0) * torch.sqrt(1 - alphas_cumprod_prev[t]) * torch.normal(
-        0, 1, size=x_0.shape
-    ).to(device)
+    alphas_cumprod_prev_t = alphas_cumprod_prev[t].reshape(-1, 1, 1)
+
+    x_t = torch.sqrt(alphas_cumprod_prev_t) * x_0 + (t.reshape(-1, 1, 1) > 0) * torch.sqrt(
+        1 - alphas_cumprod_prev_t
+    ) * torch.normal(0, 1, size=x_0.shape).to(device)
 
     return x_t
 
@@ -49,7 +51,7 @@ def get_diffusion_variables(
 ):
     x_0 = prepare_x0(model, gt, max_gen, device)
 
-    t = torch.randint(model.diffusion_steps, size=(1,)).to(device)
+    t = torch.randint(model.diffusion_steps, size=(x_0.shape[0],)).to(device)
 
     x_t = get_xt(x_0, alphas_cumprod_prev, t, device)
 
@@ -79,6 +81,7 @@ def train_model(
     device: str,
     project_name: str = "didi",
     logging_step: int = 10,
+    step_freq: int = 10,
 ):
     wandb.init(project=project_name)
 
@@ -104,14 +107,20 @@ def train_model(
 
                 optimizer.zero_grad()
 
-                mse = F.mse_loss(x_0_hat, x_0)
+                target = F.pad(
+                    gt.input_ids, (0, probs.shape[1] - gt.input_ids.shape[1]), "constant", model.emb.padding_idx
+                )
+                pad_mask = target == model.emb.padding_idx
 
-                target = F.pad(b_gt.input_ids, (0, probs.shape[1] - b_gt.input_ids.shape[1]), "constant", -100)
+                target[pad_mask] = -100
                 ce = F.cross_entropy(torch.transpose(probs, 1, 2), target)
+
+                emb_mask = ~pad_mask.unsqueeze(-1)
+                mse = F.mse_loss(x_0_hat * emb_mask, x_0 * emb_mask)
 
                 wandb.log({"train_mse": mse.item(), "train_ce": ce.item()}, step=logging_step)
 
-                loss = mse + ce
+                loss = model.diffusion_steps * mse + ce
 
                 loss.backward()
                 optimizer.step()
@@ -122,6 +131,6 @@ def train_model(
                 if not num_steps:
                     break
 
-            wandb.log({"val_ce": calculate_ce(model, val_dataloader, alphas_cumprod_prev, max_gen, device)})
+            wandb.log({"val_ce": calculate_ce(model, val_dataloader, alphas_cumprod_prev, max_gen, step_freq, device)})
 
     return model

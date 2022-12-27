@@ -3,8 +3,8 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 
-from diffusion.train_utils import get_xt
-from diffusion.train_utils import prepare_x0
+from train_utils import get_xt
+from train_utils import prepare_x0
 
 
 def calculate_hits_ppl(model, tokenizer, dataset, max_len: int, device: str):
@@ -119,7 +119,7 @@ def calculate_f1(
     return np.round(np.mean(f1) * 100, 2)
 
 
-def calculate_ce(model, val_dataloader, alphas_cumprod_prev, max_gen, device):
+def calculate_ce(model, val_dataloader, alphas_cumprod_prev, max_gen, step_freq, device):
     ces = []
 
     model.eval()
@@ -130,8 +130,10 @@ def calculate_ce(model, val_dataloader, alphas_cumprod_prev, max_gen, device):
 
             x_0 = prepare_x0(model, gt, max_gen, device)
 
-            for time in range(model.diffusion_steps - 1, 0, -1):
-                t = torch.tensor(time).to(device)
+            ones = torch.ones(x_0.shape[0]).long().to(device)
+
+            for time in range(model.diffusion_steps - 1, 0, -step_freq):
+                t = ones * time
 
                 x_t = get_xt(x_0, alphas_cumprod_prev, t, device)
 
@@ -146,7 +148,13 @@ def calculate_ce(model, val_dataloader, alphas_cumprod_prev, max_gen, device):
 
             probs = model.classifier(pred_x_0)
 
-            target = F.pad(b_gt.input_ids, (0, probs.shape[1] - b_gt.input_ids.shape[1]), "constant", -100)
+            target = F.pad(
+                b_gt.input_ids, (0, probs.shape[1] - b_gt.input_ids.shape[1]), "constant", model.emb.padding_idx
+            )
+
+            pad_mask = target == model.emb.padding_idx
+            target[pad_mask] = -100
+
             ces.append(F.cross_entropy(torch.transpose(probs, 1, 2), target).item())
 
     return np.array(ces).mean()
