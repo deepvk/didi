@@ -25,3 +25,8 @@ For proper contributions, also use dev requirements:
 ```bash
 pip install -r requirements-dev.txt
 ```
+
+## Data
+
+We use the [ConvAI2 Dataset](https://arxiv.org/pdf/1902.00098.pdf) containing dialogues between personas with different descriptive profiles.
+The dataset can be downloaded [here](http://parl.ai/downloads/convai2/convai2_fix_723.tgz).

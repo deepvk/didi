@@ -6,3 +6,5 @@ __pycache__/
 wandb/
 
 checkpoints/
+
+.DS_Store
