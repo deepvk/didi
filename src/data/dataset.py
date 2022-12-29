@@ -25,13 +25,7 @@ class ConvAI2Dataset(Dataset):
         eos = tokenizer.eos_token
 
         self.tokenizer = tokenizer
-        self.tokenizer_kwargs = {
-            "padding": True,
-            "truncation": True,
-            "return_tensors": "pt",
-            "add_special_tokens": False,
-            "max_length": max_seq_len,
-        }
+        self.max_length = max_seq_len
 
         logger.info(f"Loading dataset from '{path}'")
         with open(path, "r") as f:
@@ -71,10 +65,21 @@ class ConvAI2Dataset(Dataset):
     def collate_fn(self, samples: list[Dialog]):
         str_contexts = [" ".join(sample.context) for sample in samples]
         # [batch size, context seq len]
-        b_contexts = self.tokenizer(str_contexts, **self.tokenizer_kwargs).input_ids
+        b_contexts = self.tokenizer(
+            str_contexts,
+            max_length=self.max_length,
+            padding=True,
+            truncation=True,
+            return_tensors="pt",
+            add_special_tokens=False,
+        ).input_ids
 
         str_candidates = [it for sample in samples for it in sample.candidates]
-        b_candidates = self.tokenizer(str_candidates, **self.tokenizer_kwargs).input_ids
+        # Tokenizer truncates on the left, but for candidates we want to truncate on the right
+        b_candidates = self.tokenizer(
+            str_candidates, padding="max_length", return_tensors="pt", add_special_tokens=False
+        ).input_ids
+        b_candidates = b_candidates[:, : self.max_length]
         # [batch size, # candidates, candidates seq len]
         b_candidates = b_candidates.view(len(samples), -1, b_candidates.size(1))
 
