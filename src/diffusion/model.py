@@ -15,15 +15,15 @@ class Seq2SeqDiffusionTransformer(nn.Module):
 
         model = AutoModel.from_pretrained(name)
 
-        self.emb = self._get_embeddings(model)
-        self.time_embeds = self._get_time_embeddings(model, diffusion_steps)
+        emb_dim = model.config.d_model
 
-        self.encoder = self._get_encoder(model)
+        self.emb = nn.Embedding(vocabulary_size, emb_dim, padding_idx=0)
+        self.time_embeds = nn.Embedding(diffusion_steps + 1, emb_dim)
+
+        self.encoder = model.encoder
         self.decoder = model.decoder
 
-        self.classifier = self._get_classifier(model, vocabulary_size)
-
-        self.pad_embedding = self.get_embeddings(torch.tensor(self.emb.padding_idx))
+        self.classifier = nn.Linear(emb_dim, vocabulary_size)
 
         self.diffusion_steps = diffusion_steps
 
@@ -31,33 +31,6 @@ class Seq2SeqDiffusionTransformer(nn.Module):
     def _freeze_params(model):
         for parameter in model.parameters():
             parameter.requires_grad = False
-
-    def _get_embeddings(self, model):
-        emb = model.shared
-        self._freeze_params(emb)
-
-        return emb
-
-    @staticmethod
-    def _get_time_embeddings(model, input_dim: int):
-        emb_dim = model.config.d_model
-
-        return nn.Embedding(input_dim, emb_dim)
-
-    def _get_encoder(self, model):
-        encoder = model.encoder
-        self._freeze_params(encoder)
-
-        return encoder
-
-    @staticmethod
-    def _get_classifier(model, vocabulary_size):
-        emb_dim = model.config.d_model
-
-        return nn.Linear(emb_dim, vocabulary_size)
-
-    def get_embeddings(self, input_ids):
-        return self.emb(input_ids)
 
     def forward(
         self,
@@ -78,6 +51,4 @@ class Seq2SeqDiffusionTransformer(nn.Module):
             encoder_attention_mask=encoder_attention_mask,
         ).last_hidden_state
 
-        probs = self.classifier(output)
-
-        return output, probs
+        return output

@@ -128,25 +128,33 @@ def calculate_ce(model, val_dataloader, alphas_cumprod_prev, max_gen, step_freq,
             context = b_context.to(device)
             gt = b_gt.to(device)
 
-            x_0 = prepare_x0(model, gt, max_gen, device)
+            emb = model.emb(gt.input_ids)
+            x_0 = prepare_x0(model, emb, max_gen, device)
 
             ones = torch.ones(x_0.shape[0]).long().to(device)
 
-            for time in range(model.diffusion_steps - 1, 0, -step_freq):
+            for time in range(model.diffusion_steps, 1, -step_freq):
                 t = ones * time
 
                 x_t = get_xt(x_0, alphas_cumprod_prev, t, device)
 
-                x_0, _ = model(
+                x_0 = model(
                     encoder_input_ids=context.input_ids,
                     encoder_attention_mask=context.attention_mask,
                     decoder_inputs_embeds=x_t,
                     time_ids=t,
                 )
 
-            pred_x_0 = get_xt(x_0, alphas_cumprod_prev, 0, device)
+            x_1 = get_xt(x_0, alphas_cumprod_prev, ones, device)
 
-            probs = model.classifier(pred_x_0)
+            x_0 = model(
+                encoder_input_ids=context.input_ids,
+                encoder_attention_mask=context.attention_mask,
+                decoder_inputs_embeds=x_1,
+                time_ids=t,
+            )
+
+            probs = model.classifier(x_0)
 
             target = F.pad(
                 b_gt.input_ids, (0, probs.shape[1] - b_gt.input_ids.shape[1]), "constant", model.emb.padding_idx

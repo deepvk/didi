@@ -8,6 +8,10 @@ from schedules import linear_beta_schedule
 from metrics import calculate_ce
 
 
+def flat_mean(tensor):
+    return tensor.mean(dim=list(range(1, len(tensor.shape))))
+
+
 def configure_schedule(steps: int, schedule: str):
     if schedule == "linear":
         betas = linear_beta_schedule(steps)
@@ -18,40 +22,44 @@ def configure_schedule(steps: int, schedule: str):
 
     alphas = 1 - betas
     alphas_cumprod = torch.cumprod(alphas, dim=0)
-    alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value=1.0)
+    alphas_cumprod_prev = F.pad(alphas_cumprod, (1, 0), value=1.0)
     return alphas_cumprod_prev
 
 
 def get_xt(x_0, alphas_cumprod_prev, t, device):
     alphas_cumprod_prev_t = alphas_cumprod_prev[t].reshape(-1, 1, 1)
 
-    x_t = torch.sqrt(alphas_cumprod_prev_t) * x_0 + (t.reshape(-1, 1, 1) > 0) * torch.sqrt(
-        1 - alphas_cumprod_prev_t
-    ) * torch.normal(0, 1, size=x_0.shape).to(device)
+    x_t = torch.sqrt(alphas_cumprod_prev_t) * x_0 + torch.sqrt(1 - alphas_cumprod_prev_t) * torch.normal(
+        0, 1, size=x_0.shape
+    ).to(device)
 
     return x_t
 
 
-def prepare_x0(model, gt, max_gen, device):
-    pad_emb = model.pad_embedding
+def prepare_x0(model, emb, max_gen, device):
+    sigma_0 = 0.1
 
-    x_0 = model.embeddings(gt.input_ids)
+    pad_emb = model.emb(torch.tensor(model.emb.padding_idx).to(device))
+
+    x_0 = emb
     padding = pad_emb.repeat((x_0.shape[0], max_gen - x_0.shape[1], 1)).to(device)
     x_0 = torch.concat((x_0, padding), dim=1)
+
+    x_0 += torch.normal(0, sigma_0, size=x_0.shape).to(device)
 
     return x_0
 
 
 def get_diffusion_variables(
     model,
-    gt,
+    emb,
     max_gen: int,
     alphas_cumprod_prev: torch.Tensor,
     device: str,
 ):
-    x_0 = prepare_x0(model, gt, max_gen, device)
+    x_0 = prepare_x0(model, emb, max_gen, device)
 
-    t = torch.randint(model.diffusion_steps, size=(x_0.shape[0],)).to(device)
+    t = torch.randint(1, model.diffusion_steps + 1, size=(x_0.shape[0],)).to(device)
 
     x_t = get_xt(x_0, alphas_cumprod_prev, t, device)
 
@@ -96,9 +104,11 @@ def train_model(
                 context = b_context.to(device)
                 gt = b_gt.to(device)
 
-                x_0, x_t, t = get_diffusion_variables(model, gt, max_gen, alphas_cumprod_prev, device)
+                emb = model.emb(gt.input_ids)
 
-                x_0_hat, probs = model(
+                x_0, x_t, t = get_diffusion_variables(model, emb, max_gen, alphas_cumprod_prev, device)
+
+                x_0_hat = model(
                     encoder_input_ids=context.input_ids,
                     encoder_attention_mask=context.attention_mask,
                     decoder_inputs_embeds=x_t,
@@ -106,6 +116,8 @@ def train_model(
                 )
 
                 optimizer.zero_grad()
+
+                probs = model.classifier(x_0)
 
                 target = F.pad(
                     gt.input_ids, (0, probs.shape[1] - gt.input_ids.shape[1]), "constant", model.emb.padding_idx
@@ -116,11 +128,15 @@ def train_model(
                 ce = F.cross_entropy(torch.transpose(probs, 1, 2), target)
 
                 emb_mask = ~pad_mask.unsqueeze(-1)
-                mse = F.mse_loss(x_0_hat * emb_mask, x_0 * emb_mask)
+                mse = torch.where(
+                    t == 1,
+                    flat_mean((x_0_hat[..., : emb.shape[-2], :] - emb) ** 2) * emb_mask,
+                    flat_mean((x_0_hat - x_0) ** 2) * emb_mask,
+                ).mean()
 
                 wandb.log({"train_mse": mse.item(), "train_ce": ce.item()}, step=logging_step)
 
-                loss = model.diffusion_steps * mse + ce
+                loss = mse + ce
 
                 loss.backward()
                 optimizer.step()
