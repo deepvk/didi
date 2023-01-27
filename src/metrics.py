@@ -1,66 +1,52 @@
-import numpy as np
 import torch
 import torch.nn.functional as F
-from tqdm import tqdm
+from loguru import logger
+from tqdm.auto import tqdm
 
 from train_utils import get_xt
 from train_utils import prepare_x0
 
 
-def calculate_hits_ppl(model, tokenizer, dataset, max_len: int, device: str):
+@torch.no_grad()
+def calculate_hits_ppl(model, dataloader, pad_idx, device: str):
+    """Calculate hits@1 and perplexity of the model on the given dataset."""
     hits = []
-    ppl = []
+    ppls = []
 
     model.eval()
-    with torch.no_grad():
-        for data in tqdm(dataset, desc="Calculating perplexity and hits"):
-            context = data["context"]
-            candidates = data["candidates"]
+    logger.info("Calculating hits@1 and perplexity")
+    for b_context, b_candidates in tqdm(dataloader, desc="Calculating perplexity and hits"):
+        num_candidates = b_candidates.shape[1]
+        context_ids = b_context.repeat_interleave(num_candidates, dim=0).to(device)
+        candidates_ids = b_candidates.to(device).view(-1, b_candidates.shape[-1])
 
-            input_ids = (
-                tokenizer(
-                    context,
-                    return_tensors="pt",
-                    max_length=max_len,
-                    truncation=True,
-                    padding=True,
-                )
-                .input_ids.repeat(len(candidates), 1)
-                .to(device)
-            )
+        target_ids = candidates_ids.clone()
+        pad_mask = target_ids.eq(pad_idx)
+        target_ids[pad_mask] = -100
 
-            out_ids = tokenizer(
-                candidates,
-                return_tensors="pt",
-                max_length=max_len,
-                truncation=True,
-                padding=True,
-            ).input_ids.to(device)
+        model_output = model(context_ids, decoder_input_ids=candidates_ids, labels=target_ids)
 
-            target_ids = out_ids.clone()
-            pad_mask = target_ids.eq(0)
-            target_ids[pad_mask] = -100
+        pred_logits = model_output.logits
 
-            model_output = model(input_ids, decoder_input_ids=out_ids, labels=target_ids)
+        shift_logits = pred_logits[..., :-1, :].contiguous()
+        shift_labels = target_ids[..., 1:].contiguous()
+        shift_attention_mask_batch = pad_mask[..., 1:].contiguous().eq(0)
 
-            pred_logits = model_output.logits
+        perplexity_batch = torch.exp(
+            (
+                F.cross_entropy(shift_logits.transpose(1, 2), shift_labels, reduction="none")
+                * shift_attention_mask_batch
+            ).sum(1)
+            / shift_attention_mask_batch.sum(1)
+        ).view(-1, num_candidates)
 
-            shift_logits = pred_logits[..., :-1, :].contiguous()
-            shift_labels = target_ids[..., 1:].contiguous()
-            shift_attention_mask_batch = pad_mask[..., 1:].contiguous().eq(0)
+        hits.append(perplexity_batch.argmin(dim=1).eq(0))
+        ppls.append(perplexity_batch[:, 0])
 
-            perplexity_batch = torch.exp(
-                (
-                    F.cross_entropy(shift_logits.transpose(1, 2), shift_labels, reduction="none")
-                    * shift_attention_mask_batch
-                ).sum(1)
-                / shift_attention_mask_batch.sum(1)
-            )
+    hit = torch.concat(hits).float().mean().item()
+    ppl = torch.concat(ppls).float().mean().item()
 
-            hits.append(perplexity_batch.argmin().eq(0).item())
-            ppl.append(perplexity_batch[0].item())
-
-    return np.round(np.mean(hits) * 100, 1), np.round(np.mean(ppl), 2)
+    return hit * 100, ppl
 
 
 def calc_f1_score(gens, gts):
@@ -83,40 +69,26 @@ def calc_f1_score(gens, gts):
     return f1s
 
 
-def calculate_f1(
-    model,
-    tokenizer,
-    dataloader,
-    max_context_len,
-    max_gen_len,
-    do_sample,
-    num_beams,
-    device,
-):
-    f1 = []
+@torch.no_grad()
+def calculate_f1(model, tokenizer, dataloader, max_gen_len, do_sample, num_beams, device):
+    """Calculate F1 score of the model on the given dataset."""
+    f1s = []
 
     model.eval()
-    with torch.no_grad():
-        for data in tqdm(dataloader, desc="Calculating f1-score"):
-            context = data["context"]
-            candidates = data["candidates"]
+    logger.info("Calculating F1-score")
+    for b_context, b_candidates in tqdm(dataloader, desc="Calculating F1-score"):
+        b_context = b_context.to(device)
+        b_gts = b_candidates[:, 0]
 
-            gts = [batch[0] for batch in candidates]
+        ground_truth = tokenizer.batch_decode(b_gts, skip_special_tokens=True)
 
-            input = tokenizer(
-                context,
-                return_tensors="pt",
-                max_length=max_context_len,
-                truncation=True,
-                padding=True,
-            ).to(device)
+        reply_ids = model.generate(b_context, do_sample=do_sample, num_beams=num_beams, max_length=max_gen_len)
+        generated = tokenizer.batch_decode(reply_ids, skip_special_tokens=True)
 
-            reply_ids = model.generate(**input, do_sample=do_sample, num_beams=num_beams, max_length=max_gen_len)
-            generated = tokenizer.batch_decode(reply_ids, skip_special_tokens=True)
+        f1s += calc_f1_score(generated, ground_truth)
 
-            f1 += calc_f1_score(generated, gts)
-
-    return np.round(np.mean(f1) * 100, 2)
+    f1 = sum(f1s) / len(f1s)
+    return f1 * 100
 
 
 def calculate_ce(model, val_dataloader, alphas_cumprod_prev, max_gen, step_freq, device):
@@ -165,4 +137,4 @@ def calculate_ce(model, val_dataloader, alphas_cumprod_prev, max_gen, step_freq,
 
             ces.append(F.cross_entropy(torch.transpose(probs, 1, 2), target).item())
 
-    return np.array(ces).mean()
+    return sum(ces) / len(ces)
