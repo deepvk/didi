@@ -3,8 +3,8 @@ import torch.nn.functional as F
 from loguru import logger
 from tqdm.auto import tqdm
 
-from train_utils import get_xt
-from train_utils import prepare_x0
+from src.diffusion.train_utils import get_xt
+from src.diffusion.train_utils import prepare_x0
 
 
 @torch.no_grad()
@@ -91,7 +91,7 @@ def calculate_f1(model, tokenizer, dataloader, max_gen_len, do_sample, num_beams
     return f1 * 100
 
 
-def calculate_ce(model, val_dataloader, alphas_cumprod_prev, max_gen, step_freq, device):
+def calculate_ce(model, val_dataloader, alphas_cumprod_prev, step_freq, device):
     ces = []
 
     model.eval()
@@ -101,7 +101,7 @@ def calculate_ce(model, val_dataloader, alphas_cumprod_prev, max_gen, step_freq,
             gt = b_gt.to(device)
 
             emb = model.emb(gt.input_ids)
-            x_0 = prepare_x0(model, emb, max_gen, device)
+            x_0 = prepare_x0(emb, device)
 
             ones = torch.ones(x_0.shape[0]).long().to(device)
 

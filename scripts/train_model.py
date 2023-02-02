@@ -15,11 +15,11 @@ def configure_arg_parser():
     parser.add_argument("-v", "--val", help="Path to dataset for validation")
     parser.add_argument("-bs", "--batch_size", type=int, default=64, help="Batch size for training")
     parser.add_argument("-cl", "--max_context", type=int, default=256, help="Max length of context fed into diffusion")
-    parser.add_argument("-gl", "--max_gen", type=int, default=64, help="Max length of generated output")
+    parser.add_argument("-gl", "--max_gen", type=int, default=32, help="Max length of generated output")
     parser.add_argument("-d", "--device", default="cpu", help="Device on which to evaluate the diffusion")
     parser.add_argument("-sc", "--schedule", default="linear", help="Noise schedule for diffusion diffusion")
     parser.add_argument("-df", "--diffusion_steps", type=int, default=1000, help="Number of diffusion steps")
-    parser.add_argument("-s", "--train_steps", type=int, default=1000, help="Number of training steps")
+    parser.add_argument("-s", "--train_steps", type=int, default=10000, help="Number of training steps")
 
     return parser
 
@@ -37,7 +37,7 @@ def main(name, train, val, batch_size, max_context, max_gen, device, schedule, d
 
     model = Seq2SeqDiffusionTransformer(name, train_dataset.vocab_size, diffusion_steps).to(device)
     train_model(
-        model, train_dataloader, val_dataloader, schedule, diffusion_steps, train_steps, max_context, max_gen, device
+        model, train_dataloader, val_dataloader, schedule, diffusion_steps, train_steps, max_context, device
     )
 
 

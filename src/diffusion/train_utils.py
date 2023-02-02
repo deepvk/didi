@@ -36,16 +36,11 @@ def get_xt(x_0, alphas_cumprod_prev, t, device):
     return x_t
 
 
-def prepare_x0(model, emb, max_gen, device):
+def prepare_x0(emb, device):
     sigma_0 = 0.1
 
-    pad_emb = model.emb(torch.tensor(model.emb.padding_idx).to(device))
-
-    x_0 = emb
-    padding = pad_emb.repeat((x_0.shape[0], max_gen - x_0.shape[1], 1)).to(device)
-    x_0 = torch.concat((x_0, padding), dim=1)
-
-    x_0 += torch.normal(0, sigma_0, size=x_0.shape).to(device)
+    noise = torch.normal(0, sigma_0, size=emb.shape).to(device)
+    x_0 = emb + noise
 
     return x_0
 
@@ -53,11 +48,10 @@ def prepare_x0(model, emb, max_gen, device):
 def get_diffusion_variables(
     model,
     emb,
-    max_gen: int,
     alphas_cumprod_prev: torch.Tensor,
     device: str,
 ):
-    x_0 = prepare_x0(model, emb, max_gen, device)
+    x_0 = prepare_x0(emb, device)
 
     t = torch.randint(1, model.diffusion_steps + 1, size=(x_0.shape[0],)).to(device)
 
@@ -85,7 +79,6 @@ def train_model(
     val_dataloader,
     schedule: str,
     num_steps: int,
-    max_gen: int,
     device: str,
     project_name: str = "didi",
     logging_step: int = 10,
@@ -106,7 +99,7 @@ def train_model(
 
                 emb = model.emb(gt.input_ids)
 
-                x_0, x_t, t = get_diffusion_variables(model, emb, max_gen, alphas_cumprod_prev, device)
+                x_0, x_t, t = get_diffusion_variables(model, emb, alphas_cumprod_prev, device)
 
                 x_0_hat = model(
                     encoder_input_ids=context.input_ids,
@@ -119,18 +112,16 @@ def train_model(
 
                 probs = model.classifier(x_0)
 
-                target = F.pad(
-                    gt.input_ids, (0, probs.shape[1] - gt.input_ids.shape[1]), "constant", model.emb.padding_idx
-                )
+                target = gt.input_ids.detach().clone()
                 pad_mask = target == model.emb.padding_idx
 
                 target[pad_mask] = -100
                 ce = F.cross_entropy(torch.transpose(probs, 1, 2), target)
 
-                emb_mask = ~pad_mask.unsqueeze(-1)
+                emb_mask = ~pad_mask
                 mse = torch.where(
                     t == 1,
-                    flat_mean((x_0_hat[..., : emb.shape[-2], :] - emb) ** 2) * emb_mask,
+                    flat_mean((x_0_hat - emb) ** 2) * emb_mask,
                     flat_mean((x_0_hat - x_0) ** 2) * emb_mask,
                 ).mean()
 
@@ -149,6 +140,6 @@ def train_model(
                 if not num_steps:
                     break
 
-            wandb.log({"val_ce": calculate_ce(model, val_dataloader, alphas_cumprod_prev, max_gen, step_freq, device)})
+            wandb.log({"val_ce": calculate_ce(model, val_dataloader, alphas_cumprod_prev, step_freq, device)})
 
     return model
