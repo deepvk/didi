@@ -1,63 +1,12 @@
 import torch
-import torch.nn.functional as F
 import wandb
 from tqdm import tqdm
 
-from schedules import cosine_beta_schedule
-from schedules import linear_beta_schedule
+from src.diffusion.utils import configure_schedule
+from src.diffusion.utils import flat_mean
+from src.diffusion.utils import get_diffusion_variables
+from src.metrics import calculate_batch_ce
 from src.metrics import calculate_ce
-
-
-def flat_mean(tensor):
-    return tensor.mean(dim=list(range(1, len(tensor.shape))))
-
-
-def configure_schedule(steps: int, schedule: str):
-    if schedule == "linear":
-        betas = linear_beta_schedule(steps)
-    elif schedule == "cosine":
-        betas = cosine_beta_schedule(steps)
-    else:
-        raise NotImplementedError(f"TODO: implement {schedule} schedule")
-
-    alphas = 1 - betas
-    alphas_cumprod = torch.cumprod(alphas, dim=0)
-    alphas_cumprod_prev = F.pad(alphas_cumprod, (1, 0), value=1.0)
-    return alphas_cumprod_prev
-
-
-def get_xt(x_0, alphas_cumprod_prev, t, device):
-    alphas_cumprod_prev_t = alphas_cumprod_prev[t].reshape(-1, 1, 1)
-
-    x_t = torch.sqrt(alphas_cumprod_prev_t) * x_0 + torch.sqrt(1 - alphas_cumprod_prev_t) * torch.normal(
-        0, 1, size=x_0.shape
-    ).to(device)
-
-    return x_t
-
-
-def prepare_x0(emb, device):
-    sigma_0 = 0.1
-
-    noise = torch.normal(0, sigma_0, size=emb.shape).to(device)
-    x_0 = emb + noise
-
-    return x_0
-
-
-def get_diffusion_variables(
-    model,
-    emb,
-    alphas_cumprod_prev: torch.Tensor,
-    device: str,
-):
-    x_0 = prepare_x0(emb, device)
-
-    t = torch.randint(1, model.diffusion_steps + 1, size=(x_0.shape[0],)).to(device)
-
-    x_t = get_xt(x_0, alphas_cumprod_prev, t, device)
-
-    return x_0, x_t, t
 
 
 def train_model(
@@ -80,13 +29,14 @@ def train_model(
     model.train()
     with tqdm(total=num_steps) as pbar:
         while num_steps:
+            # b_context: [batch size, context seq len], b_gt: [batch size, target seq len]
             for b_context, b_gt in train_dataloader:
                 context = b_context.to(device)
                 gt = b_gt.to(device)
 
                 emb = model.emb(gt)
 
-                x_0, x_t, t = get_diffusion_variables(model, emb, alphas_cumprod_prev, device)
+                x_0, x_t, t = get_diffusion_variables(model.diffusion_steps, emb, alphas_cumprod_prev, device)
 
                 x_0_hat = model(
                     encoder_input_ids=context,
@@ -96,13 +46,8 @@ def train_model(
 
                 optimizer.zero_grad()
 
-                probs = model.classifier(x_0)
-
-                target = gt.detach().clone()
-                pad_mask = target == model.emb.padding_idx
-
-                target[pad_mask] = -100
-                ce = F.cross_entropy(torch.transpose(probs, 1, 2), target)
+                pad_mask = gt == model.emb.padding_idx
+                ce = calculate_batch_ce(model, x_0, gt, pad_mask)
 
                 emb_mask = ~pad_mask.unsqueeze(-1)
 

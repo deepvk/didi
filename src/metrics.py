@@ -3,8 +3,8 @@ import torch.nn.functional as F
 from loguru import logger
 from tqdm.auto import tqdm
 
-from src.diffusion.train_utils import get_xt
-from src.diffusion.train_utils import prepare_x0
+from src.diffusion.utils import get_xt
+from src.diffusion.utils import prepare_x0
 
 
 @torch.no_grad()
@@ -91,6 +91,17 @@ def calculate_f1(model, tokenizer, dataloader, max_gen_len, do_sample, num_beams
     return f1 * 100
 
 
+def calculate_batch_ce(model, x_0, gt, pad_mask):
+    probs = model.classifier(x_0)
+
+    target = gt.detach().clone()
+
+    target[pad_mask] = -100
+    ce = F.cross_entropy(torch.transpose(probs, 1, 2), target)
+
+    return ce
+
+
 @torch.no_grad()
 def calculate_ce(model, val_dataloader, alphas_cumprod_prev, step_freq, device):
     ces = []
@@ -124,13 +135,8 @@ def calculate_ce(model, val_dataloader, alphas_cumprod_prev, step_freq, device):
             time_ids=ones,
         )
 
-        probs = model.classifier(x_0)
+        pad_mask = gt == model.emb.padding_idx
 
-        target = gt.detach().clone()
-
-        pad_mask = target == model.emb.padding_idx
-        target[pad_mask] = -100
-
-        ces.append(F.cross_entropy(torch.transpose(probs, 1, 2), target).item())
+        ces.append(calculate_batch_ce(model, x_0, gt, pad_mask).item())
 
     return sum(ces) / len(ces)

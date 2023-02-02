@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 
 from src.data.dataset import ConvAI2Dataset
 from src.diffusion.model import Seq2SeqDiffusionTransformer
-from src.diffusion.train_utils import train_model
+from src.training import train_model
 
 
 def configure_arg_parser():
