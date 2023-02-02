@@ -27,11 +27,6 @@ class Seq2SeqDiffusionTransformer(nn.Module):
 
         self.diffusion_steps = diffusion_steps
 
-    @staticmethod
-    def _freeze_params(model):
-        for parameter in model.parameters():
-            parameter.requires_grad = False
-
     def forward(
         self,
         encoder_input_ids=None,
@@ -39,7 +34,8 @@ class Seq2SeqDiffusionTransformer(nn.Module):
         decoder_inputs_embeds=None,
         time_ids=None,
     ):
-        context = self.encoder(input_ids=encoder_input_ids, attention_mask=encoder_attention_mask).last_hidden_state
+        with torch.no_grad():
+            context = self.encoder(input_ids=encoder_input_ids, attention_mask=encoder_attention_mask).last_hidden_state
 
         time_embeds = self.time_embeds(time_ids)
 

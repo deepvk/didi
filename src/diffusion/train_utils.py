@@ -93,7 +93,7 @@ def train_model(
 ):
     wandb.init(project=project_name)
 
-    optimizer = torch.optim.Adam(model.parameters())
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.0001)
 
     alphas_cumprod_prev = configure_schedule(model.diffusion_steps, schedule).to(device)
 
@@ -134,9 +134,11 @@ def train_model(
                     flat_mean((x_0_hat - x_0) ** 2) * emb_mask,
                 ).mean()
 
-                wandb.log({"train_mse": mse.item(), "train_ce": ce.item()}, step=logging_step)
+                t0_loss = flat_mean((x_0 * emb_mask) ** 2).mean()
 
-                loss = mse + ce
+                wandb.log({"train_mse": mse.item(), "train_ce": ce.item(), "train_t0": t0_loss.item()}, step=logging_step)
+
+                loss = mse + ce + t0_loss
 
                 loss.backward()
                 optimizer.step()

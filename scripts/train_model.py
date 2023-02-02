@@ -16,7 +16,6 @@ def configure_arg_parser():
     parser.add_argument("-t", "--train", help="Path to dataset for training")
     parser.add_argument("-v", "--val", help="Path to dataset for validation")
     parser.add_argument("-bs", "--batch_size", type=int, default=64, help="Batch size for training")
-    parser.add_argument("-s", "--side", default="right", help="Side of truncation and padding for tokenizer")
     parser.add_argument("-cl", "--max_context", type=int, default=256, help="Max length of context fed into diffusion")
     parser.add_argument("-gl", "--max_gen", type=int, default=64, help="Max length of generated output")
     parser.add_argument("-d", "--device", default="cpu", help="Device on which to evaluate the diffusion")
@@ -28,7 +27,7 @@ def configure_arg_parser():
 
 
 def main(model, train, val, batch_size, side, max_context, max_gen, device, schedule, diffusion_steps, train_steps):
-    tokenizer = AutoTokenizer.from_pretrained(model, truncation_side=side, padding_side=side)
+    tokenizer = AutoTokenizer.from_pretrained(model, truncation_side=side)
 
     train_dataset = ConvAI2Dataset(train, tokenizer)
     train_dataloader = DataLoader(
