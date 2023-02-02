@@ -5,7 +5,6 @@ from transformers import AutoTokenizer
 
 from src.data.dataset import ConvAI2Dataset
 from src.diffusion.model import Seq2SeqDiffusionTransformer
-from src.diffusion.train_utils import collate_gt
 from src.diffusion.train_utils import train_model
 
 
@@ -26,17 +25,15 @@ def configure_arg_parser():
     return parser
 
 
-def main(model, train, val, batch_size, side, max_context, max_gen, device, schedule, diffusion_steps, train_steps):
-    tokenizer = AutoTokenizer.from_pretrained(model, truncation_side=side)
-
-    train_dataset = ConvAI2Dataset(train, tokenizer)
+def main(model, train, val, batch_size, max_context, max_gen, device, schedule, diffusion_steps, train_steps):
+    train_dataset = ConvAI2Dataset(train, tokenizer, max_context, max_gen)
     train_dataloader = DataLoader(
-        train_dataset, batch_size=batch_size, collate_fn=lambda x: collate_gt(x, tokenizer, max_context, max_gen)
+        train_dataset, batch_size=batch_size, collate_fn=lambda x: train_dataset.collate_fn(x, False)
     )
 
-    val_dataset = ConvAI2Dataset(val)
+    val_dataset = ConvAI2Dataset(val, tokenizer, max_context, max_gen)
     val_dataloader = DataLoader(
-        val_dataset, batch_size=batch_size, collate_fn=lambda x: collate_gt(x, tokenizer, max_context, max_gen)
+        val_dataset, batch_size=batch_size, collate_fn=lambda x: val_dataset.collate_fn(x, False)
     )
 
     model = Seq2SeqDiffusionTransformer(model, tokenizer.vocab_size, diffusion_steps).to(device)

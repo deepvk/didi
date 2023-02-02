@@ -17,7 +17,7 @@ class ConvAI2Dataset(Dataset):
     _YOUR_PERSONA_PREFIX = "your persona: "
     _PARTNER_PERSONA_PREFIX = "partner's persona: "
 
-    def __init__(self, path, tokenizer, max_seq_len):
+    def __init__(self, path, tokenizer, max_context_len, max_target_len=None):
         self.dataset = []
         self.num_dialogs = 0
 
@@ -25,7 +25,8 @@ class ConvAI2Dataset(Dataset):
         eos = tokenizer.eos_token
 
         self.tokenizer = tokenizer
-        self.max_length = max_seq_len
+        self.max_context_len = max_context_len
+        self.max_target_len = max_target_len or max_context_len
 
         logger.info(f"Loading dataset from '{path}'")
         with open(path, "r") as f:
@@ -62,25 +63,29 @@ class ConvAI2Dataset(Dataset):
     def __getitem__(self, idx: int) -> Dialog:
         return self.dataset[idx]
 
-    def collate_fn(self, samples: list[Dialog]):
+    def collate_fn(self, samples: list[Dialog], return_all_candidates: bool = True):
         str_contexts = [" ".join(sample.context) for sample in samples]
         # [batch size, context seq len]
         b_contexts = self.tokenizer(
             str_contexts,
-            max_length=self.max_length,
+            max_length=self.max_context_len,
             padding=True,
             truncation=True,
             return_tensors="pt",
             add_special_tokens=False,
         ).input_ids
 
-        str_candidates = [it for sample in samples for it in sample.candidates]
+        if return_all_candidates:
+            str_candidates = [it for sample in samples for it in sample.candidates]
+        else:
+            str_candidates = [sample.candidates[0] for sample in samples]
+
         # Tokenizer truncates on the left, but for candidates we want to truncate on the right
         b_candidates = self.tokenizer(
             str_candidates, padding="max_length", return_tensors="pt", add_special_tokens=False
         ).input_ids
-        b_candidates = b_candidates[:, : self.max_length]
+        b_candidates = b_candidates[:, : self.max_target_len]
         # [batch size, # candidates, candidates seq len]
         b_candidates = b_candidates.view(len(samples), -1, b_candidates.size(1))
 
-        return b_contexts, b_candidates
+        return b_contexts, b_candidates.squeeze(1)
