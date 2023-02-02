@@ -60,19 +60,6 @@ def get_diffusion_variables(
     return x_0, x_t, t
 
 
-def collate_gt(list_of_samples, tokenizer, max_context, max_gt):
-    list_of_contexts = [it["context"] for it in list_of_samples]
-    batched_gts = [sample["candidates"][0] for sample in list_of_samples]
-
-    batched_context = tokenizer(
-        list_of_contexts, return_tensors="pt", max_length=max_context, truncation=True, padding=True
-    )
-
-    batched_gts = tokenizer(batched_gts, return_tensors="pt", max_length=max_gt, truncation=True, padding=True)
-
-    return batched_context, batched_gts
-
-
 def train_model(
     model,
     train_dataloader,
@@ -81,7 +68,7 @@ def train_model(
     num_steps: int,
     device: str,
     project_name: str = "didi",
-    logging_step: int = 10,
+    logging_step: int = 100,
     step_freq: int = 10,
 ):
     wandb.init(project=project_name)
@@ -93,17 +80,16 @@ def train_model(
     model.train()
     with tqdm(total=num_steps) as pbar:
         while num_steps:
-            for b_context, b_gt in tqdm(train_dataloader):
+            for b_context, b_gt in train_dataloader:
                 context = b_context.to(device)
                 gt = b_gt.to(device)
 
-                emb = model.emb(gt.input_ids)
+                emb = model.emb(gt)
 
                 x_0, x_t, t = get_diffusion_variables(model, emb, alphas_cumprod_prev, device)
 
                 x_0_hat = model(
-                    encoder_input_ids=context.input_ids,
-                    encoder_attention_mask=context.attention_mask,
+                    encoder_input_ids=context,
                     decoder_inputs_embeds=x_t,
                     time_ids=t,
                 )
@@ -112,17 +98,18 @@ def train_model(
 
                 probs = model.classifier(x_0)
 
-                target = gt.input_ids.detach().clone()
+                target = gt.detach().clone()
                 pad_mask = target == model.emb.padding_idx
 
                 target[pad_mask] = -100
                 ce = F.cross_entropy(torch.transpose(probs, 1, 2), target)
 
-                emb_mask = ~pad_mask
+                emb_mask = ~pad_mask.unsqueeze(-1)
+
                 mse = torch.where(
                     t == 1,
-                    flat_mean((x_0_hat - emb) ** 2) * emb_mask,
-                    flat_mean((x_0_hat - x_0) ** 2) * emb_mask,
+                    flat_mean((x_0_hat - emb) ** 2 * emb_mask),
+                    flat_mean((x_0_hat - x_0) ** 2 * emb_mask),
                 ).mean()
 
                 t0_loss = (x_0**2 * emb_mask).mean()

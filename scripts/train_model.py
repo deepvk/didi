@@ -19,12 +19,12 @@ def configure_arg_parser():
     parser.add_argument("-d", "--device", default="cpu", help="Device on which to evaluate the diffusion")
     parser.add_argument("-sc", "--schedule", default="linear", help="Noise schedule for diffusion diffusion")
     parser.add_argument("-df", "--diffusion_steps", type=int, default=1000, help="Number of diffusion steps")
-    parser.add_argument("-s", "--train_steps", type=int, default=10000, help="Number of training steps")
+    parser.add_argument("-s", "--num_steps", type=int, default=10000, help="Number of training steps")
 
     return parser
 
 
-def main(name, train, val, batch_size, max_context, max_gen, device, schedule, diffusion_steps, train_steps):
+def main(name, train, val, batch_size, max_context, max_gen, device, schedule, diffusion_steps, num_steps):
     train_dataset = ConvAI2Dataset(train, name, max_context, max_gen)
     train_dataloader = DataLoader(
         train_dataset, batch_size=batch_size, collate_fn=lambda x: train_dataset.collate_fn(x, False)
@@ -36,7 +36,7 @@ def main(name, train, val, batch_size, max_context, max_gen, device, schedule, d
     )
 
     model = Seq2SeqDiffusionTransformer(name, train_dataset.vocab_size, diffusion_steps).to(device)
-    train_model(model, train_dataloader, val_dataloader, schedule, diffusion_steps, train_steps, max_context, device)
+    train_model(model, train_dataloader, val_dataloader, schedule, num_steps, device)
 
 
 if __name__ == "__main__":

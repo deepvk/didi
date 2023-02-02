@@ -17,6 +17,8 @@ class Seq2SeqDiffusionTransformer(nn.Module):
 
         emb_dim = model.config.d_model
 
+        self.diffusion_steps = diffusion_steps
+
         self.emb = nn.Embedding(vocabulary_size, emb_dim, padding_idx=0)
         self.time_embeds = nn.Embedding(diffusion_steps + 1, emb_dim)
 
@@ -25,7 +27,7 @@ class Seq2SeqDiffusionTransformer(nn.Module):
 
         self.classifier = nn.Linear(emb_dim, vocabulary_size)
 
-        self.diffusion_steps = diffusion_steps
+        freeze_params(self.encoder)
 
     def forward(
         self,

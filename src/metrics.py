@@ -91,48 +91,46 @@ def calculate_f1(model, tokenizer, dataloader, max_gen_len, do_sample, num_beams
     return f1 * 100
 
 
+@torch.no_grad()
 def calculate_ce(model, val_dataloader, alphas_cumprod_prev, step_freq, device):
     ces = []
 
     model.eval()
-    with torch.no_grad():
-        for b_context, b_gt in tqdm(val_dataloader, desc="Validating"):
-            context = b_context.to(device)
-            gt = b_gt.to(device)
+    for b_context, b_gt in tqdm(val_dataloader, desc="Validating"):
+        context = b_context.to(device)
+        gt = b_gt.to(device)
 
-            emb = model.emb(gt.input_ids)
-            x_0 = prepare_x0(emb, device)
+        emb = model.emb(gt)
+        x_0 = prepare_x0(emb, device)
 
-            ones = torch.ones(x_0.shape[0]).long().to(device)
+        ones = torch.ones(x_0.shape[0]).long().to(device)
 
-            for time in range(model.diffusion_steps, 1, -step_freq):
-                t = ones * time
+        for time in range(model.diffusion_steps, 1, -step_freq):
+            t = ones * time
 
-                x_t = get_xt(x_0, alphas_cumprod_prev, t, device)
-
-                x_0 = model(
-                    encoder_input_ids=context.input_ids,
-                    encoder_attention_mask=context.attention_mask,
-                    decoder_inputs_embeds=x_t,
-                    time_ids=t,
-                )
-
-            x_1 = get_xt(x_0, alphas_cumprod_prev, ones, device)
+            x_t = get_xt(x_0, alphas_cumprod_prev, t, device)
 
             x_0 = model(
-                encoder_input_ids=context.input_ids,
-                encoder_attention_mask=context.attention_mask,
-                decoder_inputs_embeds=x_1,
+                encoder_input_ids=context,
+                decoder_inputs_embeds=x_t,
                 time_ids=t,
             )
 
-            probs = model.classifier(x_0)
+        x_1 = get_xt(x_0, alphas_cumprod_prev, ones, device)
 
-            target = b_gt.input_ids.detach().clone()
+        x_0 = model(
+            encoder_input_ids=context,
+            decoder_inputs_embeds=x_1,
+            time_ids=ones,
+        )
 
-            pad_mask = target == model.emb.padding_idx
-            target[pad_mask] = -100
+        probs = model.classifier(x_0)
 
-            ces.append(F.cross_entropy(torch.transpose(probs, 1, 2), target).item())
+        target = gt.detach().clone()
+
+        pad_mask = target == model.emb.padding_idx
+        target[pad_mask] = -100
+
+        ces.append(F.cross_entropy(torch.transpose(probs, 1, 2), target).item())
 
     return sum(ces) / len(ces)
