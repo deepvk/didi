@@ -25,7 +25,7 @@ def configure_arg_parser():
 
 
 def main(name, train, val, batch_size, max_context, max_gen, device, schedule, diffusion_steps, num_steps):
-    train_dataset = ConvAI2Dataset(train, name, max_context, max_gen)
+    train_dataset = ConvAI2Dataset(train, name, max_context, max_gen, have_candidates=False)
     train_dataloader = DataLoader(
         train_dataset, batch_size=batch_size, collate_fn=lambda x: train_dataset.collate_fn(x, False)
     )

@@ -18,7 +18,7 @@ class ConvAI2Dataset(Dataset):
     _YOUR_PERSONA_PREFIX = "your persona: "
     _PARTNER_PERSONA_PREFIX = "partner's persona: "
 
-    def __init__(self, path, tokenizer_name, max_context_len, max_target_len=None):
+    def __init__(self, path, tokenizer_name, max_context_len, max_target_len=None, have_candidates=True):
         self.dataset = []
         self.num_dialogs = 0
 
@@ -31,6 +31,7 @@ class ConvAI2Dataset(Dataset):
         self.max_context_len = max_context_len
         self.max_target_len = max_target_len or max_context_len
 
+        self.have_candidates = have_candidates
         self.vocab_size = self.context_tokenizer.vocab_size
 
         logger.info(f"Loading dataset from '{path}'")
@@ -51,7 +52,12 @@ class ConvAI2Dataset(Dataset):
                     partner_persona.append(line[len(self._PARTNER_PERSONA_PREFIX) :])
                     continue
 
-                utterance1, utterance2, _, candidates_str = line.split("\t")
+                if have_candidates:
+                    utterance1, utterance2, _, candidates_str = line.split("\t")
+                else:
+                    utterance1, utterance2, *_ = line.split("\t")
+                    candidates_str = ""
+
                 utterance1 = bos + utterance1 + eos
                 utterance2 = bos + utterance2 + eos
                 # Last candidate is always the correct one (same as utterance2), put it first
@@ -69,6 +75,7 @@ class ConvAI2Dataset(Dataset):
         return self.dataset[idx]
 
     def collate_fn(self, samples: list[Dialog], return_all_candidates: bool = True):
+        return_all_candidates = self.have_candidates & return_all_candidates
         str_contexts = [" ".join(sample.context) for sample in samples]
         # [batch size, context seq len]
         b_contexts = self.context_tokenizer(
