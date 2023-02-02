@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from loguru import logger
 from torch.utils.data import Dataset
 from tqdm.auto import tqdm
+from transformers import AutoTokenizer
 
 
 @dataclass
@@ -17,16 +18,20 @@ class ConvAI2Dataset(Dataset):
     _YOUR_PERSONA_PREFIX = "your persona: "
     _PARTNER_PERSONA_PREFIX = "partner's persona: "
 
-    def __init__(self, path, tokenizer, max_context_len, max_target_len=None):
+    def __init__(self, path, tokenizer_name, max_context_len, max_target_len=None):
         self.dataset = []
         self.num_dialogs = 0
 
-        bos = tokenizer.bos_token
-        eos = tokenizer.eos_token
+        self.context_tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, truncation_side="left")
+        self.candidate_tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
 
-        self.tokenizer = tokenizer
+        bos = self.context_tokenizer.bos_token
+        eos = self.context_tokenizer.eos_token
+
         self.max_context_len = max_context_len
         self.max_target_len = max_target_len or max_context_len
+
+        self.vocab_size = self.context_tokenizer.vocab_size
 
         logger.info(f"Loading dataset from '{path}'")
         with open(path, "r") as f:
@@ -66,7 +71,7 @@ class ConvAI2Dataset(Dataset):
     def collate_fn(self, samples: list[Dialog], return_all_candidates: bool = True):
         str_contexts = [" ".join(sample.context) for sample in samples]
         # [batch size, context seq len]
-        b_contexts = self.tokenizer(
+        b_contexts = self.context_tokenizer(
             str_contexts,
             max_length=self.max_context_len,
             padding=True,
@@ -81,7 +86,7 @@ class ConvAI2Dataset(Dataset):
             str_candidates = [sample.candidates[0] for sample in samples]
 
         # Tokenizer truncates on the left, but for candidates we want to truncate on the right
-        b_candidates = self.tokenizer(
+        b_candidates = self.candidate_tokenizer(
             str_candidates, padding="max_length", return_tensors="pt", add_special_tokens=False
         ).input_ids
         b_candidates = b_candidates[:, : self.max_target_len]

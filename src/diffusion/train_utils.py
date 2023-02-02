@@ -5,7 +5,7 @@ from tqdm import tqdm
 
 from schedules import cosine_beta_schedule
 from schedules import linear_beta_schedule
-from metrics import calculate_ce
+from src.metrics import calculate_ce
 
 
 def flat_mean(tensor):
@@ -134,7 +134,7 @@ def train_model(
                     flat_mean((x_0_hat - x_0) ** 2) * emb_mask,
                 ).mean()
 
-                t0_loss = flat_mean((x_0 * emb_mask) ** 2).mean()
+                t0_loss = (x_0 ** 2 * emb_mask).mean()
 
                 wandb.log({"train_mse": mse.item(), "train_ce": ce.item(), "train_t0": t0_loss.item()}, step=logging_step)
 
