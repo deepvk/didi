@@ -36,9 +36,7 @@ def main(name, train, val, batch_size, max_context, max_gen, device, schedule, d
     )
 
     model = Seq2SeqDiffusionTransformer(name, train_dataset.vocab_size, diffusion_steps).to(device)
-    train_model(
-        model, train_dataloader, val_dataloader, schedule, diffusion_steps, train_steps, max_context, device
-    )
+    train_model(model, train_dataloader, val_dataloader, schedule, diffusion_steps, train_steps, max_context, device)
 
 
 if __name__ == "__main__":

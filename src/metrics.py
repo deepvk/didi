@@ -128,9 +128,7 @@ def calculate_ce(model, val_dataloader, alphas_cumprod_prev, step_freq, device):
 
             probs = model.classifier(x_0)
 
-            target = F.pad(
-                b_gt.input_ids, (0, probs.shape[1] - b_gt.input_ids.shape[1]), "constant", model.emb.padding_idx
-            )
+            target = b_gt.input_ids.detach().clone()
 
             pad_mask = target == model.emb.padding_idx
             target[pad_mask] = -100
