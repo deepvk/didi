@@ -29,6 +29,20 @@ class Seq2SeqDiffusionTransformer(nn.Module):
 
         freeze_params(self.encoder)
 
+    def train(self, mode: bool = True):
+        if not isinstance(mode, bool):
+            raise ValueError("training mode is expected to be boolean")
+        self.training = mode
+        for module in self.children():
+            module.train(mode)
+        self.encoder.eval()
+        return self
+
+    def eval(self):
+        self.train(False)
+        self.encoder.eval()
+        return self
+
     def forward(
         self,
         encoder_input_ids=None,

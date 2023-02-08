@@ -1,6 +1,6 @@
 import torch
 import wandb
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from src.diffusion.utils import configure_schedule
 from src.diffusion.utils import flat_mean
@@ -26,9 +26,10 @@ def train_model(
 
     alphas_cumprod_prev = configure_schedule(model.diffusion_steps, schedule).to(device)
 
-    model.train()
     with tqdm(total=num_steps) as pbar:
         while num_steps:
+            model.train()
+
             # b_context: [batch size, context seq len], b_gt: [batch size, target seq len]
             for b_context, b_gt in train_dataloader:
                 context = b_context.to(device)
