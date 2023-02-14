@@ -4,26 +4,28 @@ from torch import nn
 from transformers import AutoModel
 
 
+def get_components(name):
+    model = AutoModel.from_pretrained(name)
+
+    return model.encoder, model.decoder, model.config.d_model
+
+
 def freeze_params(model):
     for parameter in model.parameters():
         parameter.requires_grad = False
 
 
 class Seq2SeqDiffusionTransformer(nn.Module):
-    def __init__(self, name: str, vocabulary_size: int, diffusion_steps: int):
+    def __init__(self, encoder, decoder, emb_dim: int, vocabulary_size: int, diffusion_steps: int):
         super().__init__()
-
-        model = AutoModel.from_pretrained(name)
-
-        emb_dim = model.config.d_model
 
         self.diffusion_steps = diffusion_steps
 
         self.emb = nn.Embedding(vocabulary_size, emb_dim, padding_idx=0)
         self.time_embeds = nn.Embedding(diffusion_steps + 1, emb_dim)
 
-        self.encoder = model.encoder
-        self.decoder = model.decoder
+        self.encoder = encoder
+        self.decoder = decoder
 
         self.classifier = nn.Linear(emb_dim, vocabulary_size)
 

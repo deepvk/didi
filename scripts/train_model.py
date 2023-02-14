@@ -4,6 +4,7 @@ from torch.utils.data import DataLoader
 
 from src.data.dataset import ConvAI2Dataset
 from src.diffusion.model import Seq2SeqDiffusionTransformer
+from src.diffusion.model import get_components
 from src.training import train_model
 
 
@@ -35,7 +36,9 @@ def main(name, train, val, batch_size, max_context, max_gen, device, schedule, d
         val_dataset, batch_size=batch_size, collate_fn=lambda x: val_dataset.collate_fn(x, False)
     )
 
-    model = Seq2SeqDiffusionTransformer(name, train_dataset.vocab_size, diffusion_steps).to(device)
+    encoder, decoder, emb_dim = get_components(name)
+
+    model = Seq2SeqDiffusionTransformer(encoder, decoder, emb_dim, train_dataset.vocab_size, diffusion_steps).to(device)
     train_model(model, train_dataloader, val_dataloader, schedule, num_steps, device)
 
 
