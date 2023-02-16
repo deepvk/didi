@@ -1,7 +1,14 @@
+import pytorch_lightning as pl
 import torch
 from torch import nn
-
 from transformers import AutoModel
+
+from src.diffusion.utils import flat_mean
+from src.diffusion.utils import get_diffusion_variables
+from src.metrics import calculate_batch_ce
+from utils import configure_schedule
+from utils import get_xt
+from utils import prepare_x0
 
 
 def get_components(name):
@@ -15,8 +22,17 @@ def freeze_params(model):
         parameter.requires_grad = False
 
 
-class Seq2SeqDiffusionTransformer(nn.Module):
-    def __init__(self, encoder, decoder, emb_dim: int, vocabulary_size: int, diffusion_steps: int):
+class DiDi(pl.LightningModule):
+    def __init__(
+        self,
+        encoder,
+        decoder,
+        emb_dim: int,
+        vocabulary_size: int,
+        diffusion_steps: int,
+        schedule: str,
+        step_freq: int = 10,
+    ):
         super().__init__()
 
         self.diffusion_steps = diffusion_steps
@@ -28,6 +44,10 @@ class Seq2SeqDiffusionTransformer(nn.Module):
         self.decoder = decoder
 
         self.classifier = nn.Linear(emb_dim, vocabulary_size)
+
+        self.alphas_cumprod_prev = configure_schedule(diffusion_steps, schedule)
+
+        self.step_freq = step_freq
 
         freeze_params(self.encoder)
 
@@ -66,3 +86,80 @@ class Seq2SeqDiffusionTransformer(nn.Module):
         ).last_hidden_state
 
         return output
+
+    def training_step(self, batch, batch_idx):
+        context, gt = batch
+
+        emb = self.emb(gt)
+
+        x_0, x_t, t = get_diffusion_variables(self.diffusion_steps, emb, self.alphas_cumprod_prev)
+
+        x_0_hat = self(
+            encoder_input_ids=context,
+            decoder_inputs_embeds=x_t,
+            time_ids=t,
+        )
+
+        pad_mask = gt == self.emb.padding_idx
+
+        probs = self.classifier(x_0)
+
+        ce = calculate_batch_ce(probs, gt, pad_mask)
+
+        emb_mask = ~pad_mask.unsqueeze(-1)
+
+        mse = torch.where(
+            t == 1,
+            flat_mean((x_0_hat - emb) ** 2 * emb_mask),
+            flat_mean((x_0_hat - x_0) ** 2 * emb_mask),
+        ).mean()
+
+        t0_loss = (x_0**2 * emb_mask).mean()
+
+        loss = mse + ce + t0_loss
+
+        metrics = {"mse": mse.item(), "ce": ce.item(), "t0": t0_loss.item()}
+
+        self.log("train", metrics)
+
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        context, gt = batch
+
+        emb = self.emb(gt)
+        x_0 = prepare_x0(emb)
+
+        ones = torch.ones(x_0.shape[0]).long().to(x_0.device)
+
+        for time in range(self.diffusion_steps, 1, -self.step_freq):
+            t = ones * time
+
+            x_t = get_xt(x_0, self.alphas_cumprod_prev, t)
+
+            x_0 = self(
+                encoder_input_ids=context,
+                decoder_inputs_embeds=x_t,
+                time_ids=t,
+            )
+
+        x_1 = get_xt(x_0, self.alphas_cumprod_prev, ones)
+
+        x_0 = self(
+            encoder_input_ids=context,
+            decoder_inputs_embeds=x_1,
+            time_ids=ones,
+        )
+
+        pad_mask = gt == self.emb.padding_idx
+
+        probs = self.classifier(x_0)
+
+        loss = calculate_batch_ce(probs, gt, pad_mask).item()
+
+        self.log("val_loss", loss)
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.AdamW(self.parameters(), lr=0.0001)
+
+        return optimizer

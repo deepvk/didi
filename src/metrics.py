@@ -91,9 +91,7 @@ def calculate_f1(model, tokenizer, dataloader, max_gen_len, do_sample, num_beams
     return f1 * 100
 
 
-def calculate_batch_ce(model, x_0, gt, pad_mask):
-    probs = model.classifier(x_0)
-
+def calculate_batch_ce(probs, gt, pad_mask):
     target = gt.detach().clone()
 
     target[pad_mask] = -100
