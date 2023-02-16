@@ -3,12 +3,12 @@ import torch
 from torch import nn
 from transformers import AutoModel
 
+from src.diffusion.utils import configure_schedule
 from src.diffusion.utils import flat_mean
 from src.diffusion.utils import get_diffusion_variables
+from src.diffusion.utils import get_xt
+from src.diffusion.utils import prepare_x0
 from src.metrics import calculate_batch_ce
-from utils import configure_schedule
-from utils import get_xt
-from utils import prepare_x0
 
 
 def get_components(name):
