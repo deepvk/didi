@@ -1,8 +1,8 @@
 import torch
 import torch.nn.functional as F
 
-from schedules import cosine_beta_schedule
-from schedules import linear_beta_schedule
+from src.diffusion.schedules import cosine_beta_schedule
+from src.diffusion.schedules import linear_beta_schedule
 
 
 def flat_mean(tensor):
