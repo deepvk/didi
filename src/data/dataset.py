@@ -18,14 +18,7 @@ class ConvAI2Dataset(Dataset):
     _YOUR_PERSONA_PREFIX = "your persona: "
     _PARTNER_PERSONA_PREFIX = "partner's persona: "
 
-    def __init__(
-        self,
-        path,
-        tokenizer_name,
-        max_context_len,
-        max_target_len=None,
-        have_candidates=True,
-    ):
+    def __init__(self, path, tokenizer_name, max_context_len, max_target_len=None, have_candidates=True):
         self.dataset = []
         self.num_dialogs = 0
 
@@ -101,10 +94,7 @@ class ConvAI2Dataset(Dataset):
 
         # Tokenizer truncates on the left, but for candidates we want to truncate on the right
         b_candidates = self.candidate_tokenizer(
-            str_candidates,
-            padding="max_length",
-            return_tensors="pt",
-            add_special_tokens=False,
+            str_candidates, padding="max_length", return_tensors="pt", add_special_tokens=False
         ).input_ids
         b_candidates = b_candidates[:, : self.max_target_len]
         # [batch size, # candidates, candidates seq len]
