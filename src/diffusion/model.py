@@ -154,11 +154,21 @@ class DiDi(pl.LightningModule):
         probs = self.classifier(x_0)
         ce = calculate_batch_ce(probs, gt, pad_mask)
 
-        metrics = {"ce": ce.item(), "accuracy": acc.item()}
+        emb_mask = ~pad_mask.unsqueeze(-1)
+        preds = probs.argmax(-1)
 
-        self.log("val", metrics)
+        acc = (((preds == gt) * emb_mask).sum(axis=1) / emb_mask.sum(axis=1)).mean()
+
+        return torch.tensor([ce.item(), acc.item()])
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
 
         return optimizer
+
+    def validation_epoch_end(self, validation_step_outputs):
+        all_metrics = torch.stack(validation_step_outputs).mean(axis=0)
+
+        metrics = {"ce": all_metrics[0], "accuracy": all_metrics[1]}
+
+        self.log("val", metrics)
