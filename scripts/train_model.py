@@ -21,8 +21,11 @@ def configure_arg_parser():
     parser.add_argument("-nd", "--num_devices", type=int, default=1, help="Number of devices")
     parser.add_argument("-sc", "--schedule", default="linear", help="Noise schedule for diffusion diffusion")
     parser.add_argument("-df", "--diffusion_steps", type=int, default=1000, help="Number of diffusion steps")
-    parser.add_argument("-s", "--num_steps", type=int, default=10000, help="Number of training steps")
+    parser.add_argument("-s", "--num_steps", type=int, default=50000, help="Number of training steps")
     parser.add_argument("-l", "--logging_step", type=int, default=100, help="Logging step")
+    parser.add_argument(
+        "-vi", "--val_interval", type=int, default=10000, help="Number of training steps between evaluations"
+    )
 
     return parser
 
@@ -40,6 +43,7 @@ def main(
     diffusion_steps,
     num_steps,
     logging_step,
+    val_interval,
 ):
     train_dataset = ConvAI2Dataset(train, name, max_context, max_gen, have_candidates=False)
     train_dataloader = DataLoader(
@@ -54,7 +58,14 @@ def main(
     encoder, decoder, emb_dim = get_components(name)
 
     model = DiDi(encoder, decoder, emb_dim, train_dataset.vocab_size, diffusion_steps, schedule)
-    trainer = pl.Trainer(max_steps=num_steps, accelerator=device, devices=num_devices, log_every_n_steps=logging_step)
+    trainer = pl.Trainer(
+        max_steps=num_steps,
+        accelerator=device,
+        devices=num_devices,
+        log_every_n_steps=logging_step,
+        val_check_interval=val_interval,
+        check_val_every_n_epoch=None,
+    )
 
     trainer.fit(model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader)
 

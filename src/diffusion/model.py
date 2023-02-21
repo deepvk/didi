@@ -32,6 +32,7 @@ class DiDi(pl.LightningModule):
         diffusion_steps: int,
         schedule: str,
         step_freq: int = 10,
+        lr: float = 0.0001,
     ):
         super().__init__()
 
@@ -48,6 +49,7 @@ class DiDi(pl.LightningModule):
         self.alphas_cumprod_prev = configure_schedule(diffusion_steps, schedule)
 
         self.step_freq = step_freq
+        self.lr = lr
 
         freeze_params(self.encoder)
 
@@ -101,9 +103,7 @@ class DiDi(pl.LightningModule):
         )
 
         pad_mask = gt == self.emb.padding_idx
-
         probs = self.classifier(x_0)
-
         ce = calculate_batch_ce(probs, gt, pad_mask)
 
         emb_mask = ~pad_mask.unsqueeze(-1)
@@ -118,7 +118,7 @@ class DiDi(pl.LightningModule):
 
         loss = mse + ce + t0_loss
 
-        metrics = {"mse": mse.item(), "ce": ce.item(), "t0": t0_loss.item()}
+        metrics = {"mse": mse.item(), "ce": ce.item(), "t0": t0_loss.item(), "loss": loss.item()}
 
         self.log("train", metrics)
 
@@ -134,7 +134,6 @@ class DiDi(pl.LightningModule):
 
         for time in range(self.diffusion_steps, 1, -self.step_freq):
             t = ones * time
-
             x_t = get_xt(x_0, self.alphas_cumprod_prev, t)
 
             x_0 = self(
@@ -152,14 +151,14 @@ class DiDi(pl.LightningModule):
         )
 
         pad_mask = gt == self.emb.padding_idx
-
         probs = self.classifier(x_0)
+        ce = calculate_batch_ce(probs, gt, pad_mask)
 
-        loss = calculate_batch_ce(probs, gt, pad_mask).item()
+        metrics = {"ce": ce.item(), "accuracy": acc.item()}
 
-        self.log("val_loss", loss)
+        self.log("val", metrics)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=0.0001)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
 
         return optimizer
