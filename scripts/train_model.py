@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 from src.data.dataset import ConvAI2Dataset
 from src.diffusion.model import DiDi
 from src.diffusion.model import get_components
+from src.training import train_model
 
 
 def configure_arg_parser():
@@ -58,7 +59,7 @@ def main(
 
     model = DiDi(encoder, decoder, emb_dim, train_dataset.vocab_size, diffusion_steps, schedule)
 
-    train(model, train_dataloader, val_dataloader, device, num_devices, num_steps, logging_step, val_interval)
+    train_model(model, train_dataloader, val_dataloader, device, num_devices, num_steps, logging_step, val_interval)
 
 
 if __name__ == "__main__":

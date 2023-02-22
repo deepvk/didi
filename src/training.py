@@ -6,7 +6,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 
 
-def train(
+def train_model(
     model,
     train_dataloader,
     val_dataloader,

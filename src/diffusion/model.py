@@ -118,9 +118,9 @@ class DiDi(pl.LightningModule):
 
         loss = mse + ce + t0_loss
 
-        metrics = {"mse": mse.item(), "ce": ce.item(), "t0": t0_loss.item(), "loss": loss.item()}
+        metrics = {"train/mse": mse.item(), "train/ce": ce.item(), "train/t0": t0_loss.item(), "train/loss": loss.item()}
 
-        self.log("train", metrics)
+        self.log_dict(metrics)
 
         return loss
 
@@ -169,6 +169,6 @@ class DiDi(pl.LightningModule):
     def validation_epoch_end(self, validation_step_outputs):
         all_metrics = torch.stack(validation_step_outputs).mean(axis=0)
 
-        metrics = {"ce": all_metrics[0], "accuracy": all_metrics[1]}
+        metrics = {"val/ce": all_metrics[0], "val/accuracy": all_metrics[1]}
 
-        self.log("val", metrics)
+        self.log_dict(metrics)
