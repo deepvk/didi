@@ -1,6 +1,5 @@
 import argparse
 
-import pytorch_lightning as pl
 from torch.utils.data import DataLoader
 
 from src.data.dataset import ConvAI2Dataset
@@ -58,16 +57,8 @@ def main(
     encoder, decoder, emb_dim = get_components(name)
 
     model = DiDi(encoder, decoder, emb_dim, train_dataset.vocab_size, diffusion_steps, schedule)
-    trainer = pl.Trainer(
-        max_steps=num_steps,
-        accelerator=device,
-        devices=num_devices,
-        log_every_n_steps=logging_step,
-        val_check_interval=val_interval,
-        check_val_every_n_epoch=None,
-    )
 
-    trainer.fit(model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader)
+    train(model, train_dataloader, val_dataloader, device, num_devices, num_steps, logging_step, val_interval)
 
 
 if __name__ == "__main__":
