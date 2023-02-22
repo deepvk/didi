@@ -159,7 +159,7 @@ class DiDi(pl.LightningModule):
         probs = self.classifier(x_0)
         ce = calculate_batch_ce(probs, gt, pad_mask)
 
-        emb_mask = ~pad_mask.unsqueeze(-1)
+        emb_mask = ~pad_mask
         preds = probs.argmax(-1)
 
         acc = (((preds == gt) * emb_mask).sum(axis=1) / emb_mask.sum(axis=1)).mean()
