@@ -118,7 +118,12 @@ class DiDi(pl.LightningModule):
 
         loss = mse + ce + t0_loss
 
-        metrics = {"train/mse": mse.item(), "train/ce": ce.item(), "train/t0": t0_loss.item(), "train/loss": loss.item()}
+        metrics = {
+            "train/mse": mse.item(),
+            "train/ce": ce.item(),
+            "train/t0": t0_loss.item(),
+            "train/loss": loss.item(),
+        }
 
         self.log_dict(metrics)
 
