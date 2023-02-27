@@ -8,7 +8,7 @@ from src.diffusion.model import DiDi
 from src.diffusion.model import get_components
 from src.training import train_model
 
-torch.set_float32_matmul_precision('high')
+torch.set_float32_matmul_precision("high")
 
 
 def configure_arg_parser():
@@ -51,10 +51,20 @@ def main(
     val_interval,
 ):
     train_dataset = ConvAI2Dataset(train, name, max_context, max_gen, have_candidates=False)
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers, collate_fn=lambda x: train_dataset.collate_fn(x, False))
+    train_dataloader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        collate_fn=lambda x: train_dataset.collate_fn(x, False),
+    )
 
     val_dataset = ConvAI2Dataset(val, name, max_context, max_gen, have_candidates=False)
-    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers, collate_fn=lambda x: val_dataset.collate_fn(x, False))
+    val_dataloader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        collate_fn=lambda x: val_dataset.collate_fn(x, False),
+    )
 
     encoder, decoder, emb_dim = get_components(name)
 
