@@ -23,9 +23,9 @@ def configure_arg_parser():
     parser.add_argument("-d", "--device", default="cpu", help="Device on which to evaluate the diffusion")
     parser.add_argument("-nd", "--num_devices", type=int, default=1, help="Number of devices")
     parser.add_argument("-nw", "--num_workers", type=int, default=1, help="Number of workers for dataloader")
-    parser.add_argument("-sc", "--schedule", default="linear", help="Noise schedule for diffusion diffusion")
-    parser.add_argument("-df", "--diffusion_steps", type=int, default=1000, help="Number of diffusion steps")
-    parser.add_argument("-s", "--num_steps", type=int, default=50000, help="Number of training steps")
+    parser.add_argument("-sc", "--schedule", default="cosine", help="Noise schedule for diffusion diffusion")
+    parser.add_argument("-df", "--diffusion_steps", type=int, default=2000, help="Number of diffusion steps")
+    parser.add_argument("-s", "--num_steps", type=int, default=100000, help="Number of training steps")
     parser.add_argument("-l", "--logging_step", type=int, default=100, help="Logging step")
     parser.add_argument(
         "-vi", "--val_interval", type=int, default=10000, help="Number of training steps between evaluations"
