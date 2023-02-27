@@ -1,4 +1,3 @@
-import wandb
 from pytorch_lightning import Trainer
 from pytorch_lightning import seed_everything
 from pytorch_lightning.callbacks import LearningRateMonitor
@@ -44,5 +43,3 @@ def train_model(
     )
 
     trainer.fit(model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader)
-
-    wandb.finish()

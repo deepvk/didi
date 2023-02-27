@@ -1,11 +1,14 @@
 import argparse
 
+import torch
 from torch.utils.data import DataLoader
 
 from src.data.dataset import ConvAI2Dataset
 from src.diffusion.model import DiDi
 from src.diffusion.model import get_components
 from src.training import train_model
+
+torch.set_float32_matmul_precision('high')
 
 
 def configure_arg_parser():
@@ -19,6 +22,7 @@ def configure_arg_parser():
     parser.add_argument("-gl", "--max_gen", type=int, default=32, help="Max length of generated output")
     parser.add_argument("-d", "--device", default="cpu", help="Device on which to evaluate the diffusion")
     parser.add_argument("-nd", "--num_devices", type=int, default=1, help="Number of devices")
+    parser.add_argument("-nw", "--num_workers", type=int, default=1, help="Number of workers for dataloader")
     parser.add_argument("-sc", "--schedule", default="linear", help="Noise schedule for diffusion diffusion")
     parser.add_argument("-df", "--diffusion_steps", type=int, default=1000, help="Number of diffusion steps")
     parser.add_argument("-s", "--num_steps", type=int, default=50000, help="Number of training steps")
@@ -39,6 +43,7 @@ def main(
     max_gen,
     device,
     num_devices,
+    num_workers,
     schedule,
     diffusion_steps,
     num_steps,
@@ -46,14 +51,10 @@ def main(
     val_interval,
 ):
     train_dataset = ConvAI2Dataset(train, name, max_context, max_gen, have_candidates=False)
-    train_dataloader = DataLoader(
-        train_dataset, batch_size=batch_size, collate_fn=lambda x: train_dataset.collate_fn(x, False)
-    )
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers, collate_fn=lambda x: train_dataset.collate_fn(x, False))
 
     val_dataset = ConvAI2Dataset(val, name, max_context, max_gen, have_candidates=False)
-    val_dataloader = DataLoader(
-        val_dataset, batch_size=batch_size, collate_fn=lambda x: val_dataset.collate_fn(x, False)
-    )
+    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers, collate_fn=lambda x: val_dataset.collate_fn(x, False))
 
     encoder, decoder, emb_dim = get_components(name)
 

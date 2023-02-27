@@ -118,12 +118,7 @@ class DiDi(pl.LightningModule):
 
         loss = mse + ce + t0_loss
 
-        metrics = {
-            "train/mse": mse.item(),
-            "train/ce": ce.item(),
-            "train/t0": t0_loss.item(),
-            "train/loss": loss.item(),
-        }
+        metrics = {"train/mse": mse, "train/ce": ce, "train/t0": t0_loss, "train/loss": loss}
 
         self.log_dict(metrics)
 
@@ -164,7 +159,7 @@ class DiDi(pl.LightningModule):
 
         acc = (((preds == gt) * emb_mask).sum(axis=1) / emb_mask.sum(axis=1)).mean()
 
-        return torch.tensor([ce.item(), acc.item()])
+        return torch.tensor([ce, acc])
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
