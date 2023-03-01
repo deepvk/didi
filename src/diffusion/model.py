@@ -2,6 +2,7 @@ import pytorch_lightning as pl
 import torch
 from torch import nn
 from transformers import AutoModel
+from transformers import BertConfig
 
 from src.diffusion.utils import configure_schedule
 from src.diffusion.utils import flat_mean
@@ -11,10 +12,25 @@ from src.diffusion.utils import prepare_x0
 from src.metrics import calculate_batch_ce
 
 
-def get_components(name):
+def get_components(name: str, mode: str = "same"):
     model = AutoModel.from_pretrained(name)
+    emb_dim = model.config.d_model
 
-    return model.encoder, model.decoder, model.config.d_model
+    if mode == "same":
+        return model.encoder, model.decoder, emb_dim
+
+    elif mode == "bert":
+        decoder_config = BertConfig(
+            is_decoder=True,
+            hidden_size=emb_dim,
+            num_attention_heads=emb_dim//64,
+            add_cross_attention=True,
+            cross_attention_hidden_size=emb_dim,
+        )
+
+        decoder = AutoModel.from_config(decoder_config)
+
+        return model.encoder, decoder, emb_dim
 
 
 def freeze_params(model):
