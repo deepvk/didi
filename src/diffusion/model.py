@@ -23,7 +23,7 @@ def get_components(name: str, mode: str = "same"):
         decoder_config = BertConfig(
             is_decoder=True,
             hidden_size=emb_dim,
-            num_attention_heads=emb_dim//64,
+            num_attention_heads=emb_dim // 64,
             add_cross_attention=True,
             cross_attention_hidden_size=emb_dim,
         )
