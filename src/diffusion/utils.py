@@ -3,6 +3,7 @@ import torch.nn.functional as F
 
 from src.diffusion.schedules import cosine_beta_schedule
 from src.diffusion.schedules import linear_beta_schedule
+from src.diffusion.schedules import sqrt_beta_schedule
 
 
 def flat_mean(tensor):
@@ -14,6 +15,8 @@ def configure_schedule(steps: int, schedule: str):
         betas = linear_beta_schedule(steps)
     elif schedule == "cosine":
         betas = cosine_beta_schedule(steps)
+    elif schedule == "sqrt":
+        betas = sqrt_beta_schedule(steps)
     else:
         raise NotImplementedError(f"TODO: implement {schedule} schedule")
 

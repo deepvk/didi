@@ -11,3 +11,11 @@ def cosine_beta_schedule(steps: int, s: float = 0.008):
     alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
     betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
     return torch.clip(betas, 1e-4, 1 - 1e-4)
+
+
+def sqrt_beta_schedule(steps: int):
+    x = torch.linspace(0, 1, steps + 1)
+    alphas_cumprod = 1 - torch.sqrt(x + 0.0001)
+    alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
+    betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
+    return torch.clip(betas, 1e-4, 1 - 1e-4)
