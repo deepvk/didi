@@ -21,6 +21,7 @@ def get_components(name: str, mode: str = "same"):
 
     elif mode == "bert":
         decoder_config = BertConfig(
+            vocab_size=model.config.vocab_size,
             is_decoder=True,
             hidden_size=emb_dim,
             num_attention_heads=emb_dim // 64,
