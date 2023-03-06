@@ -121,12 +121,12 @@ class CommonsenseConversationDataset(Dataset):
 
         logger.info(f"Loading dataset from '{path}'")
 
-        with open(path, 'r') as f:
+        with open(path, "r") as f:
             lines_list = list(f)
 
         for line in lines_list:
             result = json.loads(line)
-            dialog = {'context': [result['src']], 'candidates': [result['trg']]}
+            dialog = {"context": [result["src"]], "candidates": [result["trg"]]}
             self.dataset.append(Dialog(**dialog))
 
         logger.info(f"Loaded {len(self.dataset)} samples from {self.num_dialogs} dialogs")
