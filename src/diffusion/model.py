@@ -63,7 +63,7 @@ class DiDi(pl.LightningModule):
 
         self.classifier = nn.Linear(emb_dim, vocabulary_size)
 
-        self.alphas_cumprod_prev = configure_schedule(diffusion_steps, schedule)
+        self.alphas_cumprod_prev, self.sigma_0 = configure_schedule(diffusion_steps, schedule)
 
         self.step_freq = step_freq
         self.lr = lr
@@ -111,7 +111,7 @@ class DiDi(pl.LightningModule):
 
         emb = self.emb(gt)
 
-        x_0, x_t, t = get_diffusion_variables(self.diffusion_steps, emb, self.alphas_cumprod_prev)
+        x_0, x_t, t = get_diffusion_variables(self.diffusion_steps, emb, self.alphas_cumprod_prev, self.sigma_0)
 
         x_0_hat = self(
             encoder_input_ids=context,
