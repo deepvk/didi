@@ -66,14 +66,14 @@ def main(
         train_dataset,
         batch_size=batch_size,
         num_workers=num_workers,
-        collate_fn=lambda x: train_dataset.collate_fn(x, False),
+        collate_fn=train_dataset.collate_fn,
     )
 
     val_dataloader = DataLoader(
         val_dataset,
         batch_size=batch_size,
         num_workers=num_workers,
-        collate_fn=lambda x: val_dataset.collate_fn(x, False),
+        collate_fn=val_dataset.collate_fn,
     )
 
     encoder, decoder, emb_dim = get_components(name, decoder_mode)

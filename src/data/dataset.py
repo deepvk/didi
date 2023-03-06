@@ -76,7 +76,7 @@ class ConvAI2Dataset(Dataset):
     def __getitem__(self, idx: int) -> Dialog:
         return self.dataset[idx]
 
-    def collate_fn(self, samples: list[Dialog], return_all_candidates: bool = True):
+    def collate_fn(self, samples: list[Dialog], return_all_candidates: bool = False):
         return_all_candidates = self.have_candidates & return_all_candidates
         str_contexts = [" ".join(sample.context) for sample in samples]
         # [batch size, context seq len]
@@ -108,7 +108,6 @@ class ConvAI2Dataset(Dataset):
 class CommonsenseConversationDataset(Dataset):
     def __init__(self, path, tokenizer_name, max_context_len, max_target_len=None, have_candidates=True):
         self.dataset = []
-        self.num_dialogs = 0
 
         self.context_tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, truncation_side="left")
         self.candidate_tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
@@ -129,7 +128,7 @@ class CommonsenseConversationDataset(Dataset):
             dialog = {"context": [result["src"]], "candidates": [result["trg"]]}
             self.dataset.append(Dialog(**dialog))
 
-        logger.info(f"Loaded {len(self.dataset)} samples from {self.num_dialogs} dialogs")
+        logger.info(f"Loaded {len(self.dataset)} samples")
 
     def __len__(self):
         return len(self.dataset)
