@@ -3,6 +3,7 @@ import argparse
 import torch
 from torch.utils.data import DataLoader
 
+from src.data.dataset import CommonsenseConversationDataset
 from src.data.dataset import ConvAI2Dataset
 from src.diffusion.model import DiDi
 from src.diffusion.model import get_components
@@ -23,13 +24,15 @@ def configure_arg_parser():
     parser.add_argument("-d", "--device", default="cpu", help="Device on which to evaluate the diffusion")
     parser.add_argument("-nd", "--num_devices", type=int, default=1, help="Number of devices")
     parser.add_argument("-nw", "--num_workers", type=int, default=1, help="Number of workers for dataloader")
-    parser.add_argument("-sc", "--schedule", default="cosine", help="Noise schedule for diffusion diffusion")
+    parser.add_argument("-sc", "--schedule", default="sqrt", help="Noise schedule for diffusion diffusion")
     parser.add_argument("-df", "--diffusion_steps", type=int, default=2000, help="Number of diffusion steps")
     parser.add_argument("-s", "--num_steps", type=int, default=100000, help="Number of training steps")
     parser.add_argument("-l", "--logging_step", type=int, default=100, help="Logging step")
     parser.add_argument(
         "-vi", "--val_interval", type=int, default=10000, help="Number of training steps between evaluations"
     )
+    parser.add_argument("-p", "--pretrain",  action=argparse.BooleanOptionalAction, help="Flag for model pretraining")
+    parser.add_argument("-dm", "--decoder_mode", default="bert", help="Model decoder type")
 
     return parser
 
@@ -49,8 +52,16 @@ def main(
     num_steps,
     logging_step,
     val_interval,
+    pretrain,
+    decoder_mode,
 ):
-    train_dataset = ConvAI2Dataset(train, name, max_context, max_gen, have_candidates=False)
+    if pretrain:
+        train_dataset = CommonsenseConversationDataset(train, name, max_context, max_gen)
+        val_dataset = CommonsenseConversationDataset(val, name, max_context, max_gen)
+    else:
+        train_dataset = ConvAI2Dataset(train, name, max_context, max_gen, have_candidates=False)
+        val_dataset = ConvAI2Dataset(val, name, max_context, max_gen, have_candidates=False)
+
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=batch_size,
@@ -58,7 +69,6 @@ def main(
         collate_fn=lambda x: train_dataset.collate_fn(x, False),
     )
 
-    val_dataset = ConvAI2Dataset(val, name, max_context, max_gen, have_candidates=False)
     val_dataloader = DataLoader(
         val_dataset,
         batch_size=batch_size,
@@ -66,7 +76,7 @@ def main(
         collate_fn=lambda x: val_dataset.collate_fn(x, False),
     )
 
-    encoder, decoder, emb_dim = get_components(name)
+    encoder, decoder, emb_dim = get_components(name, decoder_mode)
 
     model = DiDi(encoder, decoder, emb_dim, train_dataset.vocab_size, diffusion_steps, schedule)
 
