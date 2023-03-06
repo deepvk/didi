@@ -48,7 +48,7 @@ class DiDi(pl.LightningModule):
         vocabulary_size: int,
         diffusion_steps: int,
         schedule: str,
-        step_freq: int = 10,
+        step_freq: int,
         lr: float = 0.0001,
     ):
         super().__init__()
