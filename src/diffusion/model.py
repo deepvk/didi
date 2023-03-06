@@ -12,7 +12,7 @@ from src.diffusion.utils import prepare_x0
 from src.metrics import calculate_batch_ce
 
 
-def get_components(name: str, mode: str = "same"):
+def get_components(name: str, mode: str = "same", num_attention_heads: int = 16):
     model = AutoModel.from_pretrained(name)
     emb_dim = model.config.d_model
 
@@ -24,7 +24,7 @@ def get_components(name: str, mode: str = "same"):
             vocab_size=model.config.vocab_size,
             is_decoder=True,
             hidden_size=emb_dim,
-            num_attention_heads=emb_dim // 64,
+            num_attention_heads=num_attention_heads,
             add_cross_attention=True,
             cross_attention_hidden_size=emb_dim,
         )
@@ -145,7 +145,7 @@ class DiDi(pl.LightningModule):
         context, gt = batch
 
         emb = self.emb(gt)
-        x_0 = prepare_x0(emb)
+        x_0 = prepare_x0(emb, self.sigma_0)
 
         ones = torch.ones(x_0.shape[0]).long().to(x_0.device)
 
