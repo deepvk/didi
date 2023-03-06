@@ -33,6 +33,9 @@ def configure_arg_parser():
     )
     parser.add_argument("-p", "--pretrain", action=argparse.BooleanOptionalAction, help="Flag for model pretraining")
     parser.add_argument("-dm", "--decoder_mode", default="bert", help="Model decoder type")
+    parser.add_argument(
+        "-sf", "--step_freq", type=int, default=10, help="Number of skipped diffusion steps during decoding"
+    )
 
     return parser
 
@@ -54,6 +57,7 @@ def main(
     val_interval,
     pretrain,
     decoder_mode,
+    step_freq,
 ):
     if pretrain:
         train_dataset = CommonsenseConversationDataset(train, name, max_context, max_gen)
@@ -78,7 +82,7 @@ def main(
 
     encoder, decoder, emb_dim = get_components(name, decoder_mode)
 
-    model = DiDi(encoder, decoder, emb_dim, train_dataset.vocab_size, diffusion_steps, schedule)
+    model = DiDi(encoder, decoder, emb_dim, train_dataset.vocab_size, diffusion_steps, schedule, step_freq)
 
     train_model(model, train_dataloader, val_dataloader, device, num_devices, num_steps, logging_step, val_interval)
 
