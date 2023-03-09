@@ -12,7 +12,13 @@ from src.diffusion.utils import prepare_x0
 from src.metrics import calculate_batch_ce
 
 
-def get_components(name: str, mode: str = "same", num_attention_heads: int = 16):
+def get_components(
+        name: str,
+        mode: str = "same",
+        num_hidden_layers: int = 12,
+        num_attention_heads: int = 12,
+        intermediate_size: int = 3072
+):
     model = AutoModel.from_pretrained(name)
     emb_dim = model.config.d_model
 
@@ -25,8 +31,9 @@ def get_components(name: str, mode: str = "same", num_attention_heads: int = 16)
             is_decoder=True,
             hidden_size=emb_dim,
             num_attention_heads=num_attention_heads,
+            num_hidden_layers=num_hidden_layers,
+            intermediate_size=intermediate_size,
             add_cross_attention=True,
-            cross_attention_hidden_size=emb_dim,
         )
 
         decoder = AutoModel.from_config(decoder_config)
