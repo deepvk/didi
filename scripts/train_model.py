@@ -31,7 +31,7 @@ def configure_arg_parser():
     parser.add_argument(
         "-vi", "--val_interval", type=int, default=10000, help="Number of training steps between evaluations"
     )
-    parser.add_argument("-p", "--pretrain", action=argparse.BooleanOptionalAction, help="Flag for model pretraining")
+    parser.add_argument("-p", "--pretrain", action="store_true", help="Flag for model pretraining")
     parser.add_argument("-dm", "--decoder_mode", default="bert", help="Model decoder type")
     parser.add_argument(
         "-sf", "--step_freq", type=int, default=10, help="Number of skipped diffusion steps during decoding"

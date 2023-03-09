@@ -106,16 +106,15 @@ class ConvAI2Dataset(Dataset):
 
 
 class CommonsenseConversationDataset(Dataset):
-    def __init__(self, path, tokenizer_name, max_context_len, max_target_len=None, have_candidates=True):
+    def __init__(self, path, tokenizer_name, max_context_len, max_target_len=None):
         self.dataset = []
 
         self.context_tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, truncation_side="left")
-        self.candidate_tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+        self.reply_tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
 
         self.max_context_len = max_context_len
         self.max_target_len = max_target_len or max_context_len
 
-        self.have_candidates = have_candidates
         self.vocab_size = self.context_tokenizer.vocab_size
 
         logger.info(f"Loading dataset from '{path}'")
@@ -125,19 +124,18 @@ class CommonsenseConversationDataset(Dataset):
 
         for line in lines_list:
             result = json.loads(line)
-            dialog = {"context": [result["src"]], "candidates": [result["trg"]]}
-            self.dataset.append(Dialog(**dialog))
+            self.dataset.append((result["src"], result["trg"]))
 
         logger.info(f"Loaded {len(self.dataset)} samples")
 
     def __len__(self):
         return len(self.dataset)
 
-    def __getitem__(self, idx: int) -> Dialog:
+    def __getitem__(self, idx: int) -> tuple[str, str]:
         return self.dataset[idx]
 
-    def collate_fn(self, samples: list[Dialog]):
-        str_contexts = [sample.context[0] for sample in samples]
+    def collate_fn(self, samples: list[tuple[str, str]]):
+        str_contexts = [context for context, _ in samples]
         # [batch size, context seq len]
         b_contexts = self.context_tokenizer(
             str_contexts,
@@ -148,14 +146,14 @@ class CommonsenseConversationDataset(Dataset):
             add_special_tokens=False,
         ).input_ids
 
-        str_candidates = [sample.candidates[0] for sample in samples]
+        str_replies = [reply for _, reply in samples]
 
         # Tokenizer truncates on the left, but for candidates we want to truncate on the right
-        b_candidates = self.candidate_tokenizer(
-            str_candidates, padding="max_length", return_tensors="pt", add_special_tokens=False
+        b_replies = self.reply_tokenizer(
+            str_replies, padding="max_length", return_tensors="pt", add_special_tokens=False
         ).input_ids
-        b_candidates = b_candidates[:, : self.max_target_len]
+        b_replies = b_replies[:, : self.max_target_len]
         # [batch size, # candidates, candidates seq len]
-        b_candidates = b_candidates.view(len(samples), -1, b_candidates.size(1))
+        b_replies = b_replies.view(len(samples), -1, b_replies.size(1))
 
-        return b_contexts, b_candidates.squeeze(1)
+        return b_contexts, b_replies.squeeze(1)
