@@ -13,11 +13,11 @@ from src.metrics import calculate_batch_ce
 
 
 def get_components(
-        name: str,
-        mode: str = "same",
-        num_hidden_layers: int = 12,
-        num_attention_heads: int = 12,
-        intermediate_size: int = 3072
+    name: str,
+    mode: str = "same",
+    num_hidden_layers: int = 12,
+    num_attention_heads: int = 12,
+    intermediate_size: int = 3072,
 ):
     model = AutoModel.from_pretrained(name)
     emb_dim = model.config.d_model
