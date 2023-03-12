@@ -55,6 +55,7 @@ class DiDi(pl.LightningModule):
         diffusion_steps: int,
         schedule: str,
         step_freq: int,
+        optimizer: str = "AdamW",
         lr: float = 0.0001,
         momentum: float = 0.95,
     ):
@@ -187,7 +188,12 @@ class DiDi(pl.LightningModule):
         return torch.tensor([ce, acc])
 
     def configure_optimizers(self):
-        optimizer = torch.optim.SGD(self.parameters(), lr=self.lr, momentum=self.momentum)
+        if self.optimizer == "AdamW":
+            optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
+        elif self.optimizer == "SGD":
+            optimizer = torch.optim.SGD(self.parameters(), lr=self.lr, momentum=self.momentum)
+        else:
+            raise NotImplementedError("Unsupported optimizer")
 
         return optimizer
 

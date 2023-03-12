@@ -38,6 +38,7 @@ def configure_arg_parser():
     )
     parser.add_argument("-hl", "--hidden_layers", type=int, default=12, help="Number of hidden layers in bert decoder")
     parser.add_argument("-is", "--intermediate_size", type=int, default=3072, help="Intermediate_size of bert decoder")
+    parser.add_argument("-o", "--optimizer", default="AdamW", help="Optimizer name")
 
     return parser
 
@@ -62,6 +63,7 @@ def main(
     step_freq,
     hidden_layers,
     intermediate_size,
+    optimizer,
 ):
     if pretrain:
         train_dataset = CommonsenseConversationDataset(train, name, max_context, max_gen)
@@ -86,7 +88,7 @@ def main(
 
     encoder, decoder, emb_dim = get_components(name, decoder_mode, hidden_layers, intermediate_size)
 
-    model = DiDi(encoder, decoder, emb_dim, train_dataset.vocab_size, diffusion_steps, schedule, step_freq)
+    model = DiDi(encoder, decoder, emb_dim, train_dataset.vocab_size, diffusion_steps, schedule, step_freq, optimizer)
 
     train_model(model, train_dataloader, val_dataloader, device, num_devices, num_steps, logging_step, val_interval)
 
