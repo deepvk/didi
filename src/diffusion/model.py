@@ -14,10 +14,9 @@ from src.metrics import calculate_batch_ce
 
 def get_components(
     name: str,
-    mode: str = "same",
-    num_hidden_layers: int = 12,
-    num_attention_heads: int = 12,
-    intermediate_size: int = 3072,
+    mode: str,
+    num_hidden_layers: int = None,
+    intermediate_size: int = None,
 ):
     model = AutoModel.from_pretrained(name)
     emb_dim = model.config.d_model
@@ -30,7 +29,7 @@ def get_components(
             vocab_size=model.config.vocab_size,
             is_decoder=True,
             hidden_size=emb_dim,
-            num_attention_heads=num_attention_heads,
+            num_attention_heads=model.config.num_attention_heads,
             num_hidden_layers=num_hidden_layers,
             intermediate_size=intermediate_size,
             add_cross_attention=True,
@@ -57,6 +56,7 @@ class DiDi(pl.LightningModule):
         schedule: str,
         step_freq: int,
         lr: float = 0.0001,
+        momentum: float = 0.95,
     ):
         super().__init__()
 
@@ -74,6 +74,7 @@ class DiDi(pl.LightningModule):
 
         self.step_freq = step_freq
         self.lr = lr
+        self.momentum = momentum
 
         freeze_params(self.encoder)
 
@@ -186,7 +187,7 @@ class DiDi(pl.LightningModule):
         return torch.tensor([ce, acc])
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
+        optimizer = torch.optim.SGD(self.parameters(), lr=self.lr, momentum=self.momentum)
 
         return optimizer
 

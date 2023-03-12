@@ -36,6 +36,8 @@ def configure_arg_parser():
     parser.add_argument(
         "-sf", "--step_freq", type=int, default=10, help="Number of skipped diffusion steps during decoding"
     )
+    parser.add_argument("-hl", "--hidden_layers", type=int, default=12, help="Number of hidden layers in bert decoder")
+    parser.add_argument("-is", "--intermediate_size", type=int, default=3072, help="Intermediate_size of bert decoder")
 
     return parser
 
@@ -58,6 +60,8 @@ def main(
     pretrain,
     decoder_mode,
     step_freq,
+    hidden_layers,
+    intermediate_size,
 ):
     if pretrain:
         train_dataset = CommonsenseConversationDataset(train, name, max_context, max_gen)
@@ -80,7 +84,7 @@ def main(
         collate_fn=val_dataset.collate_fn,
     )
 
-    encoder, decoder, emb_dim = get_components(name, decoder_mode)
+    encoder, decoder, emb_dim = get_components(name, decoder_mode, hidden_layers, intermediate_size)
 
     model = DiDi(encoder, decoder, emb_dim, train_dataset.vocab_size, diffusion_steps, schedule, step_freq)
 
