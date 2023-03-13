@@ -153,7 +153,5 @@ class CommonsenseConversationDataset(Dataset):
             str_replies, padding="max_length", return_tensors="pt", add_special_tokens=False
         ).input_ids
         b_replies = b_replies[:, : self.max_target_len]
-        # [batch size, # replies, replies seq len]
-        b_replies = b_replies.view(len(samples), -1, b_replies.size(1))
 
-        return b_contexts, b_replies.squeeze(1)
+        return b_contexts, b_replies
