@@ -2,6 +2,7 @@ import pytorch_lightning as pl
 import torch
 from torch import nn
 from transformers import AutoModel
+from transformers import BertConfig
 
 from src.diffusion.utils import configure_schedule
 from src.diffusion.utils import flat_mean
@@ -11,10 +12,32 @@ from src.diffusion.utils import prepare_x0
 from src.metrics import calculate_batch_ce
 
 
-def get_components(name):
+def get_components(
+    name: str,
+    mode: str,
+    num_hidden_layers: int = None,
+    intermediate_size: int = None,
+):
     model = AutoModel.from_pretrained(name)
+    emb_dim = model.config.d_model
 
-    return model.encoder, model.decoder, model.config.d_model
+    if mode == "same":
+        return model.encoder, model.decoder, emb_dim
+
+    elif mode == "bert":
+        decoder_config = BertConfig(
+            vocab_size=model.config.vocab_size,
+            is_decoder=True,
+            hidden_size=emb_dim,
+            num_attention_heads=model.config.num_attention_heads,
+            num_hidden_layers=num_hidden_layers,
+            intermediate_size=intermediate_size,
+            add_cross_attention=True,
+        )
+
+        decoder = AutoModel.from_config(decoder_config)
+
+        return model.encoder, decoder, emb_dim
 
 
 def freeze_params(model):
@@ -31,8 +54,10 @@ class DiDi(pl.LightningModule):
         vocabulary_size: int,
         diffusion_steps: int,
         schedule: str,
-        step_freq: int = 10,
+        step_freq: int,
+        optimizer: str = "AdamW",
         lr: float = 0.0001,
+        momentum: float = 0.95,
     ):
         super().__init__()
 
@@ -46,10 +71,11 @@ class DiDi(pl.LightningModule):
 
         self.classifier = nn.Linear(emb_dim, vocabulary_size)
 
-        self.alphas_cumprod_prev = configure_schedule(diffusion_steps, schedule)
+        self.alphas_cumprod_prev, self.sigma_0 = configure_schedule(diffusion_steps, schedule)
 
         self.step_freq = step_freq
         self.lr = lr
+        self.momentum = momentum
 
         freeze_params(self.encoder)
 
@@ -94,7 +120,7 @@ class DiDi(pl.LightningModule):
 
         emb = self.emb(gt)
 
-        x_0, x_t, t = get_diffusion_variables(self.diffusion_steps, emb, self.alphas_cumprod_prev)
+        x_0, x_t, t = get_diffusion_variables(self.diffusion_steps, emb, self.alphas_cumprod_prev, self.sigma_0)
 
         x_0_hat = self(
             encoder_input_ids=context,
@@ -128,7 +154,7 @@ class DiDi(pl.LightningModule):
         context, gt = batch
 
         emb = self.emb(gt)
-        x_0 = prepare_x0(emb)
+        x_0 = prepare_x0(emb, self.sigma_0)
 
         ones = torch.ones(x_0.shape[0]).long().to(x_0.device)
 
@@ -162,7 +188,12 @@ class DiDi(pl.LightningModule):
         return torch.tensor([ce, acc])
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
+        if self.optimizer == "AdamW":
+            optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
+        elif self.optimizer == "SGD":
+            optimizer = torch.optim.SGD(self.parameters(), lr=self.lr, momentum=self.momentum)
+        else:
+            raise NotImplementedError("Unsupported optimizer")
 
         return optimizer
 

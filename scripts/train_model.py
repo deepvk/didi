@@ -3,6 +3,7 @@ import argparse
 import torch
 from torch.utils.data import DataLoader
 
+from src.data.dataset import CommonsenseConversationDataset
 from src.data.dataset import ConvAI2Dataset
 from src.diffusion.model import DiDi
 from src.diffusion.model import get_components
@@ -23,13 +24,21 @@ def configure_arg_parser():
     parser.add_argument("-d", "--device", default="cpu", help="Device on which to evaluate the diffusion")
     parser.add_argument("-nd", "--num_devices", type=int, default=1, help="Number of devices")
     parser.add_argument("-nw", "--num_workers", type=int, default=1, help="Number of workers for dataloader")
-    parser.add_argument("-sc", "--schedule", default="cosine", help="Noise schedule for diffusion diffusion")
+    parser.add_argument("-sc", "--schedule", default="sqrt", help="Noise schedule for diffusion diffusion")
     parser.add_argument("-df", "--diffusion_steps", type=int, default=2000, help="Number of diffusion steps")
     parser.add_argument("-s", "--num_steps", type=int, default=100000, help="Number of training steps")
     parser.add_argument("-l", "--logging_step", type=int, default=100, help="Logging step")
     parser.add_argument(
         "-vi", "--val_interval", type=int, default=10000, help="Number of training steps between evaluations"
     )
+    parser.add_argument("-p", "--pretrain", action="store_true", help="Flag for model pretraining")
+    parser.add_argument("-dm", "--decoder_mode", default="bert", help="Model decoder type")
+    parser.add_argument(
+        "-sf", "--step_freq", type=int, default=10, help="Number of skipped diffusion steps during decoding"
+    )
+    parser.add_argument("-hl", "--hidden_layers", type=int, default=12, help="Number of hidden layers in bert decoder")
+    parser.add_argument("-is", "--intermediate_size", type=int, default=3072, help="Intermediate_size of bert decoder")
+    parser.add_argument("-o", "--optimizer", default="AdamW", help="Optimizer name")
 
     return parser
 
@@ -49,26 +58,37 @@ def main(
     num_steps,
     logging_step,
     val_interval,
+    pretrain,
+    decoder_mode,
+    step_freq,
+    hidden_layers,
+    intermediate_size,
+    optimizer,
 ):
-    train_dataset = ConvAI2Dataset(train, name, max_context, max_gen, have_candidates=False)
+    if pretrain:
+        train_dataset = CommonsenseConversationDataset(train, name, max_context, max_gen)
+        val_dataset = CommonsenseConversationDataset(val, name, max_context, max_gen)
+    else:
+        train_dataset = ConvAI2Dataset(train, name, max_context, max_gen, have_candidates=False)
+        val_dataset = ConvAI2Dataset(val, name, max_context, max_gen, have_candidates=False)
+
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         num_workers=num_workers,
-        collate_fn=lambda x: train_dataset.collate_fn(x, False),
+        collate_fn=train_dataset.collate_fn,
     )
 
-    val_dataset = ConvAI2Dataset(val, name, max_context, max_gen, have_candidates=False)
     val_dataloader = DataLoader(
         val_dataset,
         batch_size=batch_size,
         num_workers=num_workers,
-        collate_fn=lambda x: val_dataset.collate_fn(x, False),
+        collate_fn=val_dataset.collate_fn,
     )
 
-    encoder, decoder, emb_dim = get_components(name)
+    encoder, decoder, emb_dim = get_components(name, decoder_mode, hidden_layers, intermediate_size)
 
-    model = DiDi(encoder, decoder, emb_dim, train_dataset.vocab_size, diffusion_steps, schedule)
+    model = DiDi(encoder, decoder, emb_dim, train_dataset.vocab_size, diffusion_steps, schedule, step_freq, optimizer)
 
     train_model(model, train_dataloader, val_dataloader, device, num_devices, num_steps, logging_step, val_interval)
 
