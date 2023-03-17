@@ -1,20 +1,16 @@
-from pytorch_lightning import Trainer
-from pytorch_lightning import seed_everything
-from pytorch_lightning.callbacks import LearningRateMonitor
-from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.loggers import WandbLogger
+from lightning import seed_everything, Trainer
+from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
+from lightning.pytorch.loggers import WandbLogger
 
 
 def train_model(
     model,
     train_dataloader,
     val_dataloader,
-    device,
-    num_devices,
-    num_steps,
-    logging_step,
-    val_interval,
+    train_parameters: dict,
+    *,
     seed: int = 42,
+    save_interval: int = -1,
     project_name: str = "didi",
 ):
     seed_everything(seed)
@@ -23,7 +19,7 @@ def train_model(
     checkpoint_callback = ModelCheckpoint(
         wandb_logger.experiment.dir,
         filename="step_{step}",
-        every_n_train_steps=val_interval,
+        every_n_train_steps=save_interval if save_interval > 0 else train_parameters["max_steps"],
         save_top_k=-1,
         auto_insert_metric_name=False,
         save_on_train_epoch_end=True,
@@ -32,14 +28,10 @@ def train_model(
     lr_logger = LearningRateMonitor("step")
 
     trainer = Trainer(
-        accelerator=device,
-        devices=num_devices,
         callbacks=[lr_logger, checkpoint_callback],
-        log_every_n_steps=logging_step,
         logger=wandb_logger,
-        max_steps=num_steps,
-        val_check_interval=val_interval,
-        check_val_every_n_epoch=None,
+        log_every_n_steps=10,
+        **train_parameters,
     )
 
     trainer.fit(model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader)

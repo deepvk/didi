@@ -1,5 +1,5 @@
-import pytorch_lightning as pl
 import torch
+from lightning import LightningModule
 from torch import nn
 from transformers import AutoModel
 from transformers import BertConfig
@@ -45,13 +45,14 @@ def freeze_params(model):
         parameter.requires_grad = False
 
 
-class DiDi(pl.LightningModule):
+class DiDi(LightningModule):
     def __init__(
         self,
         encoder,
         decoder,
         emb_dim: int,
         vocabulary_size: int,
+        *,
         diffusion_steps: int,
         schedule: str,
         step_freq: int,
@@ -74,22 +75,28 @@ class DiDi(pl.LightningModule):
         self.alphas_cumprod_prev, self.sigma_0 = configure_schedule(diffusion_steps, schedule)
 
         self.step_freq = step_freq
+
+        self.optimizer = optimizer
         self.lr = lr
         self.momentum = momentum
 
         freeze_params(self.encoder)
 
-    def train(self, mode: bool = True):
-        if not isinstance(mode, bool):
-            raise ValueError("training mode is expected to be boolean")
-        self.training = mode
-        for module in self.children():
-            module.train(mode)
-        self.encoder.eval()
-        return self
+        self.val_ce: list[float] = []
+        self.val_acc: list[float] = []
 
-    def eval(self):
-        self.train(False)
+    def configure_optimizers(self):
+        if self.optimizer == "AdamW":
+            optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
+        elif self.optimizer == "SGD":
+            optimizer = torch.optim.SGD(self.parameters(), lr=self.lr, momentum=self.momentum)
+        else:
+            raise NotImplementedError("Unsupported optimizer")
+
+        return optimizer
+
+    def train(self, mode: bool = True):
+        super().train(mode)
         self.encoder.eval()
         return self
 
@@ -145,8 +152,7 @@ class DiDi(pl.LightningModule):
         loss = mse + ce + t0_loss
 
         metrics = {"train/mse": mse, "train/ce": ce, "train/t0": t0_loss, "train/loss": loss}
-
-        self.log_dict(metrics)
+        self.log_dict(metrics, sync_dist=True, on_step=True, on_epoch=False)
 
         return loss
 
@@ -178,28 +184,16 @@ class DiDi(pl.LightningModule):
 
         pad_mask = gt == self.emb.padding_idx
         probs = self.classifier(x_0)
-        ce = calculate_batch_ce(probs, gt, pad_mask)
+        self.val_ce.append(calculate_batch_ce(probs, gt, pad_mask).item())
 
         emb_mask = ~pad_mask
         preds = probs.argmax(-1)
+        self.val_acc.append((((preds == gt) * emb_mask).sum(axis=1) / emb_mask.sum(axis=1)).mean().item())
 
-        acc = (((preds == gt) * emb_mask).sum(axis=1) / emb_mask.sum(axis=1)).mean()
-
-        return torch.tensor([ce, acc])
-
-    def configure_optimizers(self):
-        if self.optimizer == "AdamW":
-            optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
-        elif self.optimizer == "SGD":
-            optimizer = torch.optim.SGD(self.parameters(), lr=self.lr, momentum=self.momentum)
-        else:
-            raise NotImplementedError("Unsupported optimizer")
-
-        return optimizer
-
-    def validation_epoch_end(self, validation_step_outputs):
-        all_metrics = torch.stack(validation_step_outputs).mean(axis=0)
-
-        metrics = {"val/ce": all_metrics[0], "val/accuracy": all_metrics[1]}
-
-        self.log_dict(metrics)
+    def on_validation_epoch_end(self):
+        avg_ce = sum(self.val_ce) / len(self.val_ce)
+        avg_acc = sum(self.val_acc) / len(self.val_acc)
+        metrics = {"val/ce": avg_ce, "val/accuracy": avg_acc}
+        self.log_dict(metrics, sync_dist=True, on_step=False, on_epoch=True)
+        self.val_ce.clear()
+        self.val_acc.clear()

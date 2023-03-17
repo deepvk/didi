@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader
 from transformers import AutoModelForSeq2SeqLM
 from transformers import AutoTokenizer
 
-from src.data.dataset import ConvAI2Dataset
+from src.data.convai2_dataset import ConvAI2Dataset
 from src.metrics import calculate_f1, calculate_hits_ppl
 
 
