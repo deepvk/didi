@@ -56,25 +56,24 @@ class DiDi(LightningModule):
         diffusion_steps: int,
         schedule: str,
         step_freq: int,
+        pad_idx: int,
         optimizer: str = "AdamW",
         lr: float = 0.0001,
         momentum: float = 0.95,
     ):
         super().__init__()
-
         self.diffusion_steps = diffusion_steps
+        self.pad_idx = pad_idx
+        self.step_freq = step_freq
 
-        self.emb = nn.Embedding(vocabulary_size, emb_dim, padding_idx=0)
+        self.emb = nn.Embedding(vocabulary_size, emb_dim, padding_idx=pad_idx)
         self.time_embeds = nn.Embedding(diffusion_steps + 1, emb_dim)
 
         self.encoder = encoder
         self.decoder = decoder
-
         self.classifier = nn.Linear(emb_dim, vocabulary_size)
 
         self.alphas_cumprod_prev, self.sigma_0 = configure_schedule(diffusion_steps, schedule)
-
-        self.step_freq = step_freq
 
         self.optimizer = optimizer
         self.lr = lr
@@ -92,12 +91,11 @@ class DiDi(LightningModule):
             optimizer = torch.optim.SGD(self.parameters(), lr=self.lr, momentum=self.momentum)
         else:
             raise NotImplementedError("Unsupported optimizer")
-
         return optimizer
 
     def train(self, mode: bool = True):
         super().train(mode)
-        self.encoder.eval()
+        self.encoder.eval()  # Keep encoder always in eval mode
         return self
 
     def forward(
@@ -106,38 +104,35 @@ class DiDi(LightningModule):
         encoder_attention_mask=None,
         decoder_inputs_embeds=None,
         time_ids=None,
+        context=None,
     ):
-        with torch.no_grad():
-            context = self.encoder(input_ids=encoder_input_ids, attention_mask=encoder_attention_mask).last_hidden_state
+        if encoder_input_ids is None and context is None:
+            raise ValueError("Either `encoder_input_ids` or `context` must be provided.")
+
+        if context is None:
+            with torch.no_grad():
+                context = self.encoder(
+                    input_ids=encoder_input_ids, attention_mask=encoder_attention_mask
+                ).last_hidden_state
 
         time_embeds = self.time_embeds(time_ids)
-
         input_embeds = decoder_inputs_embeds + time_embeds.unsqueeze(1)
 
         output = self.decoder(
-            inputs_embeds=input_embeds,
-            encoder_hidden_states=context,
-            encoder_attention_mask=encoder_attention_mask,
+            inputs_embeds=input_embeds, encoder_hidden_states=context, encoder_attention_mask=encoder_attention_mask
         ).last_hidden_state
-
-        return output
+        return output, context
 
     def training_step(self, batch, batch_idx):
-        context, gt = batch
-
-        emb = self.emb(gt)
+        context, target = batch
+        emb = self.emb(target)
 
         x_0, x_t, t = get_diffusion_variables(self.diffusion_steps, emb, self.alphas_cumprod_prev, self.sigma_0)
+        x_0_hat, _ = self(encoder_input_ids=context, decoder_inputs_embeds=x_t, time_ids=t)
 
-        x_0_hat = self(
-            encoder_input_ids=context,
-            decoder_inputs_embeds=x_t,
-            time_ids=t,
-        )
-
-        pad_mask = gt == self.emb.padding_idx
+        pad_mask = target == self.emb.padding_idx
         probs = self.classifier(x_0)
-        ce = calculate_batch_ce(probs, gt, pad_mask)
+        ce = calculate_batch_ce(probs, target, pad_mask)
 
         emb_mask = ~pad_mask.unsqueeze(-1)
 
@@ -146,54 +141,37 @@ class DiDi(LightningModule):
             flat_mean((x_0_hat - emb) ** 2 * emb_mask),
             flat_mean((x_0_hat - x_0) ** 2 * emb_mask),
         ).mean()
-
         t0_loss = (x_0**2 * emb_mask).mean()
-
         loss = mse + ce + t0_loss
 
         metrics = {"train/mse": mse, "train/ce": ce, "train/t0": t0_loss, "train/loss": loss}
         self.log_dict(metrics, sync_dist=True, on_step=True, on_epoch=False)
-
         return loss
 
     def validation_step(self, batch, batch_idx):
-        context, gt = batch
-
-        emb = self.emb(gt)
+        raw_context, target = batch
+        emb = self.emb(target)
         x_0 = prepare_x0(emb, self.sigma_0)
 
-        ones = torch.ones(x_0.shape[0]).long().to(x_0.device)
-
+        context = None
+        ones = torch.ones(x_0.shape[0], dtype=torch.long, device=x_0.device)
         for time in range(self.diffusion_steps, 1, -self.step_freq):
             t = ones * time
             x_t = get_xt(x_0, self.alphas_cumprod_prev, t)
-
-            x_0 = self(
-                encoder_input_ids=context,
-                decoder_inputs_embeds=x_t,
-                time_ids=t,
-            )
+            x_0, context = self(encoder_input_ids=raw_context, decoder_inputs_embeds=x_t, time_ids=t, context=context)
 
         x_1 = get_xt(x_0, self.alphas_cumprod_prev, ones)
+        x_0, context = self(encoder_input_ids=raw_context, decoder_inputs_embeds=x_1, time_ids=ones, context=context)
 
-        x_0 = self(
-            encoder_input_ids=context,
-            decoder_inputs_embeds=x_1,
-            time_ids=ones,
-        )
+        non_pad_mask = target != self.pad_idx
+        logits = self.classifier(x_0)
+        predictions = logits.argmax(-1)
 
-        pad_mask = gt == self.emb.padding_idx
-        probs = self.classifier(x_0)
-        self.val_ce.append(calculate_batch_ce(probs, gt, pad_mask).item())
-
-        emb_mask = ~pad_mask
-        preds = probs.argmax(-1)
-        self.val_acc.append((((preds == gt) * emb_mask).sum(axis=1) / emb_mask.sum(axis=1)).mean().item())
+        self.val_ce.append(calculate_batch_ce(logits, target, ~non_pad_mask).item())
+        self.val_acc.append((((predictions == target) * non_pad_mask).sum() / non_pad_mask.sum()).item())
 
     def on_validation_epoch_end(self):
-        avg_ce = sum(self.val_ce) / len(self.val_ce)
-        avg_acc = sum(self.val_acc) / len(self.val_acc)
-        metrics = {"val/ce": avg_ce, "val/accuracy": avg_acc}
+        metrics = {"val/ce": sum(self.val_ce) / len(self.val_ce), "val/accuracy": sum(self.val_acc) / len(self.val_acc)}
         self.log_dict(metrics, sync_dist=True, on_step=False, on_epoch=True)
         self.val_ce.clear()
         self.val_acc.clear()
