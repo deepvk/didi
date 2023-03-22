@@ -6,6 +6,7 @@ from src.diffusion.schedules import linear_beta_schedule
 from src.diffusion.schedules import sqrt_beta_schedule
 
 
+@torch.compile
 def flat_mean(tensor):
     return tensor.mean(dim=list(range(1, len(tensor.shape))))
 
@@ -29,32 +30,24 @@ def configure_schedule(steps: int, schedule: str):
     return alphas_cumprod_prev, sigma_0
 
 
+@torch.compile
 def get_xt(x_0, alphas_cumprod_prev, t):
     alphas_cumprod_prev_t = alphas_cumprod_prev.to(x_0.device)[t].reshape(-1, 1, 1)
-
     noise = torch.normal(0, 1, size=x_0.shape).to(x_0.device)
     x_t = torch.sqrt(alphas_cumprod_prev_t) * x_0 + torch.sqrt(1 - alphas_cumprod_prev_t) * noise
-
     return x_t
 
 
+@torch.compile
 def prepare_x0(emb: torch.Tensor, sigma_0: float):
     noise = torch.normal(0, sigma_0, size=emb.shape).to(emb.device)
     x_0 = emb + noise
-
     return x_0
 
 
-def get_diffusion_variables(
-    diffusion_steps: int,
-    emb: torch.Tensor,
-    alphas_cumprod_prev: torch.Tensor,
-    sigma_0: float,
-):
+@torch.compile
+def get_diffusion_variables(diffusion_steps: int, emb: torch.Tensor, alphas_cumprod_prev: torch.Tensor, sigma_0: float):
     x_0 = prepare_x0(emb, sigma_0)
-
     t = torch.randint(1, diffusion_steps + 1, size=(x_0.shape[0],)).to(x_0.device)
-
     x_t = get_xt(x_0, alphas_cumprod_prev, t)
-
     return x_0, x_t, t

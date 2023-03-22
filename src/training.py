@@ -17,7 +17,7 @@ def train_model(
 
     wandb_logger = WandbLogger(project=project_name)
     checkpoint_callback = ModelCheckpoint(
-        wandb_logger.experiment.dir,
+        str(wandb_logger.experiment.dir),
         filename="step_{step}",
         every_n_train_steps=save_interval if save_interval > 0 else train_parameters["max_steps"],
         save_top_k=-1,
