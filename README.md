@@ -28,5 +28,16 @@ pip install -r requirements-dev.txt
 
 ## Data
 
+### Pretrain
+
+We use [`pushshift.io`](https://pushshift.io/) dataset with Reddits' comments to pretrain our model.
+We have collected all the comments for 2019.
+
+TODO: add preprocessing and filter steps
+
+A total of 237.212.662 dialogs, 100.000 each, are used for validation and testing.
+
+### Fine-tuning
+
 We use the [ConvAI2 Dataset](https://arxiv.org/pdf/1902.00098.pdf) containing dialogues between personas with different descriptive profiles.
 The dataset can be downloaded [here](http://parl.ai/downloads/convai2/convai2_fix_723.tgz).
