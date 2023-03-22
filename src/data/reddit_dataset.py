@@ -1,5 +1,4 @@
 import glob
-import gzip
 import json
 from itertools import cycle
 from os import environ
@@ -48,6 +47,10 @@ class RedditDataset(IterableDataset):
     def vocab_size(self) -> int:
         return self.context_tokenizer.vocab_size
 
+    @property
+    def pad_idx(self) -> int:
+        return self.context_tokenizer.pad_token_id
+
     def _log(self, msg: str):
         if self._ws > 1:
             msg = f"[Dataset {self._rank + 1}/{self._ws}] " + msg
@@ -57,13 +60,13 @@ class RedditDataset(IterableDataset):
         self._ws, self._rank = int(environ.get("WORLD_SIZE", 1)), int(environ.get("LOCAL_RANK", 0))
 
         shards: Iterable[str] = self.files[self._rank :: self._ws]
+        self._log(f"Shards to use (infinite: {self.infinite}): {', '.join(shards)}")
         if self.infinite:
             shards = cycle(shards)
-        self._log(f"Shards to use (infinite: {self.infinite}): {', '.join(shards)}")
 
         for shard in shards:
             self._log(f"Processing {shard}")
-            with gzip.open(shard, "rt") as f_in:
+            with open(shard, "rt") as f_in:
                 for line in f_in:
                     sample = json.loads(line)
                     utterances = [self.bos_token + it + self.eos_token for it in sample["thread"]]
@@ -72,13 +75,8 @@ class RedditDataset(IterableDataset):
 
     def collate_fn(self, samples: list[tuple[str, str]]):
         str_contexts, str_replies = zip(*samples)
-
         # [batch size; context seq len]
-        b_contexts = self.context_tokenizer(
-            str_contexts, max_length=self.max_context_len, **self.tokenizer_kwargs
-        ).input_ids
-
+        contexts = self.context_tokenizer(str_contexts, max_length=self.max_context_len, **self.tokenizer_kwargs)
         # [batch size; target seq len]
-        b_replies = self.reply_tokenizer(str_replies, max_length=self.max_target_len, **self.tokenizer_kwargs).input_ids
-
-        return b_contexts, b_replies
+        replies = self.reply_tokenizer(str_replies, max_length=self.max_target_len, **self.tokenizer_kwargs)
+        return contexts.input_ids, replies.input_ids
