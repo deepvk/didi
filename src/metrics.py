@@ -3,9 +3,6 @@ import torch.nn.functional as F
 from loguru import logger
 from tqdm.auto import tqdm
 
-from src.diffusion.utils import get_xt
-from src.diffusion.utils import prepare_x0
-
 
 @torch.no_grad()
 def calculate_hits_ppl(model, dataloader, pad_idx, device: str):
@@ -91,50 +88,6 @@ def calculate_f1(model, tokenizer, dataloader, max_gen_len, do_sample, num_beams
     return f1 * 100
 
 
-def calculate_batch_ce(probs, gt, pad_mask):
-    target = gt.detach().clone()
-
-    target[pad_mask] = -100
-    ce = F.cross_entropy(torch.transpose(probs, 1, 2), target)
-
-    return ce
-
-
-@torch.no_grad()
-def calculate_ce(model, val_dataloader, alphas_cumprod_prev, step_freq, device):
-    ces = []
-
-    model.eval()
-    for b_context, b_gt in tqdm(val_dataloader, desc="Validating"):
-        context = b_context.to(device)
-        gt = b_gt.to(device)
-
-        emb = model.emb(gt)
-        x_0 = prepare_x0(emb, device)
-
-        ones = torch.ones(x_0.shape[0]).long().to(device)
-
-        for time in range(model.diffusion_steps, 1, -step_freq):
-            t = ones * time
-
-            x_t = get_xt(x_0, alphas_cumprod_prev, t, device)
-
-            x_0 = model(
-                encoder_input_ids=context,
-                decoder_inputs_embeds=x_t,
-                time_ids=t,
-            )
-
-        x_1 = get_xt(x_0, alphas_cumprod_prev, ones, device)
-
-        x_0 = model(
-            encoder_input_ids=context,
-            decoder_inputs_embeds=x_1,
-            time_ids=ones,
-        )
-
-        pad_mask = gt == model.emb.padding_idx
-
-        ces.append(calculate_batch_ce(model, x_0, gt, pad_mask).item())
-
-    return sum(ces) / len(ces)
+def calculate_batch_ce(logits, target, non_pad_mask):
+    non_pad_mask = non_pad_mask.bool().view(-1)
+    return F.cross_entropy(logits.view(-1, logits.shape[-1])[non_pad_mask], target.view(-1)[non_pad_mask])

@@ -7,6 +7,12 @@ from tqdm.auto import trange
 from src.data.reddit_dataset import RedditDataset
 
 
+def print_sample(batch, idx, tokenizer):
+    print(" ".join([str(it.item()) for it in batch.attention_mask[idx]]))
+    print(" ".join([str(it.item()) for it in batch.input_ids[idx]]))
+    print(tokenizer.decode(batch.input_ids[idx]))
+
+
 def main(file_glob, tokenizer_name, seq_len, bs, skip, infinite):
     dataset = RedditDataset(file_glob, tokenizer_name, seq_len, infinite=infinite)
     dataloader = DataLoader(dataset, batch_size=bs, collate_fn=dataset.collate_fn)
@@ -17,14 +23,10 @@ def main(file_glob, tokenizer_name, seq_len, bs, skip, infinite):
         next(batch_iter)
 
     b_context, b_reply = next(batch_iter)
-    for context, reply in zip(b_context, b_reply):
-        str_context = dataset.context_tokenizer.decode(context, skip_special_tokens=False).strip()
-        print(" ".join([str(it.item()) for it in context]))
-        print(str_context)
+    for i in range(bs):
+        print_sample(b_context, i, dataset.context_tokenizer)
         print("-" * 120)
-        str_reply = dataset.reply_tokenizer.decode(reply, skip_special_tokens=False).strip()
-        print(" ".join([str(it.item()) for it in reply]))
-        print(str_reply)
+        print_sample(b_reply, i, dataset.reply_tokenizer)
         print("=" * 120)
 
 

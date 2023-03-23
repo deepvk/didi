@@ -6,7 +6,7 @@ from typing import Iterator, Iterable
 
 from loguru import logger
 from torch.utils.data import IterableDataset
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, PreTrainedTokenizer
 
 from src.utils import zero_rank_info
 
@@ -22,8 +22,12 @@ class RedditDataset(IterableDataset):
     ):
         self._ws, self._rank = 1, 0
 
-        self.context_tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, truncation_side="left")
-        self.reply_tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, truncation_side="right")
+        self.context_tokenizer: PreTrainedTokenizer = AutoTokenizer.from_pretrained(
+            tokenizer_name, truncation_side="left"
+        )
+        self.reply_tokenizer: PreTrainedTokenizer = AutoTokenizer.from_pretrained(
+            tokenizer_name, truncation_side="right"
+        )
         self.tokenizer_kwargs = {
             "padding": True,
             "truncation": True,
@@ -79,4 +83,4 @@ class RedditDataset(IterableDataset):
         contexts = self.context_tokenizer(str_contexts, max_length=self.max_context_len, **self.tokenizer_kwargs)
         # [batch size; target seq len]
         replies = self.reply_tokenizer(str_replies, max_length=self.max_target_len, **self.tokenizer_kwargs)
-        return contexts.input_ids, replies.input_ids
+        return contexts, replies

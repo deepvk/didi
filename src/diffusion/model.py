@@ -73,7 +73,8 @@ class DiDi(LightningModule):
         self.decoder = decoder
         self.classifier = nn.Linear(emb_dim, vocabulary_size)
 
-        self.alphas_cumprod_prev, self.sigma_0 = configure_schedule(diffusion_steps, schedule)
+        alphas_cumprod_prev, self.sigma_0 = configure_schedule(diffusion_steps, schedule)
+        self.register_buffer("alphas_cumprod_prev", alphas_cumprod_prev)
 
         self.optimizer = optimizer
         self.lr = lr
@@ -125,23 +126,27 @@ class DiDi(LightningModule):
 
     def training_step(self, batch, batch_idx):
         context, target = batch
-        emb = self.emb(target)
+        emb = self.emb(target.input_ids)
 
+        # x: [batch size; seq len; emb dim], t: [batch size]
         x_0, x_t, t = get_diffusion_variables(self.diffusion_steps, emb, self.alphas_cumprod_prev, self.sigma_0)
-        x_0_hat, _ = self(encoder_input_ids=context, decoder_inputs_embeds=x_t, time_ids=t)
+        x_0_hat, _ = self(
+            encoder_input_ids=context.input_ids,
+            encoder_attention_mask=context.attention_mask,
+            decoder_inputs_embeds=x_t,
+            time_ids=t,
+        )  # [batch size; seq len; emb dim]
 
-        pad_mask = target == self.emb.padding_idx
-        probs = self.classifier(x_0)
-        ce = calculate_batch_ce(probs, target, pad_mask)
+        logits = self.classifier(x_0)  # [batch size; seq len; vocab size]
+        ce = calculate_batch_ce(logits, target.input_ids, target.attention_mask)
 
-        emb_mask = ~pad_mask.unsqueeze(-1)
-
+        non_pad_mask = target.attention_mask.unsqueeze(-1)
         mse = torch.where(
             t == 1,
-            flat_mean((x_0_hat - emb) ** 2 * emb_mask),
-            flat_mean((x_0_hat - x_0) ** 2 * emb_mask),
+            flat_mean((x_0_hat - emb) ** 2 * non_pad_mask),
+            flat_mean((x_0_hat - x_0) ** 2 * non_pad_mask),
         ).mean()
-        t0_loss = (x_0**2 * emb_mask).mean()
+        t0_loss = (x_0**2 * non_pad_mask).mean()
         loss = mse + ce + t0_loss
 
         metrics = {"train/mse": mse, "train/ce": ce, "train/t0": t0_loss, "train/loss": loss}
@@ -149,26 +154,39 @@ class DiDi(LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        raw_context, target = batch
-        emb = self.emb(target)
+        context, target = batch
+        emb = self.emb(target.input_ids)
         x_0 = prepare_x0(emb, self.sigma_0)
 
-        context = None
+        cached_context = None
         ones = torch.ones(x_0.shape[0], dtype=torch.long, device=x_0.device)
         for time in range(self.diffusion_steps, 1, -self.step_freq):
             t = ones * time
             x_t = get_xt(x_0, self.alphas_cumprod_prev, t)
-            x_0, context = self(encoder_input_ids=raw_context, decoder_inputs_embeds=x_t, time_ids=t, context=context)
+            x_0, cached_context = self(
+                encoder_input_ids=context.input_ids,
+                encoder_attention_mask=context.attention_mask,
+                decoder_inputs_embeds=x_t,
+                time_ids=t,
+                context=cached_context,
+            )
 
         x_1 = get_xt(x_0, self.alphas_cumprod_prev, ones)
-        x_0, context = self(encoder_input_ids=raw_context, decoder_inputs_embeds=x_1, time_ids=ones, context=context)
+        x_0, _ = self(
+            encoder_input_ids=context.input_ids,
+            encoder_attention_mask=context.attention_mask,
+            decoder_inputs_embeds=x_1,
+            time_ids=ones,
+            context=cached_context,
+        )
 
-        non_pad_mask = target != self.pad_idx
         logits = self.classifier(x_0)
         predictions = logits.argmax(-1)
 
-        self.val_ce.append(calculate_batch_ce(logits, target, ~non_pad_mask).item())
-        self.val_acc.append((((predictions == target) * non_pad_mask).sum() / non_pad_mask.sum()).item())
+        self.val_ce.append(calculate_batch_ce(logits, target.input_ids, target.attention_mask).item())
+        self.val_acc.append(
+            (((predictions == target.input_ids) * target.attention_mask).sum() / target.attention_mask.sum()).item()
+        )
 
     def on_validation_epoch_end(self):
         metrics = {"val/ce": sum(self.val_ce) / len(self.val_ce), "val/accuracy": sum(self.val_acc) / len(self.val_acc)}
