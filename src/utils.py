@@ -27,6 +27,7 @@ def setup_logger():
     logger.remove()
     fmt = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <level>{message}</level>"
     logger.add(stderr, format=fmt)
+    environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "True"
 
 
 def zero_rank_info(message: str):
