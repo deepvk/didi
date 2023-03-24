@@ -4,11 +4,7 @@ from torch import nn
 from transformers import AutoModel
 from transformers import BertConfig
 
-from src.diffusion.utils import configure_schedule
-from src.diffusion.utils import flat_mean
-from src.diffusion.utils import get_diffusion_variables
-from src.diffusion.utils import get_xt
-from src.diffusion.utils import prepare_x0
+from src.diffusion.utils import configure_schedule, get_diffusion_variables, prepare_x0, get_xt
 from src.metrics import calculate_batch_ce
 
 
@@ -45,6 +41,10 @@ def freeze_params(model):
         parameter.requires_grad = False
 
 
+def flat_mean(tensor):
+    return tensor.mean(dim=list(range(1, len(tensor.shape))))
+
+
 class DiDi(LightningModule):
     def __init__(
         self,
@@ -70,6 +70,8 @@ class DiDi(LightningModule):
         self.time_embeds = nn.Embedding(diffusion_steps + 1, emb_dim)
 
         self.encoder = encoder
+        freeze_params(self.encoder)
+
         self.decoder = decoder
         self.classifier = nn.Linear(emb_dim, vocabulary_size)
 
@@ -79,8 +81,6 @@ class DiDi(LightningModule):
         self.optimizer = optimizer
         self.lr = lr
         self.momentum = momentum
-
-        freeze_params(self.encoder)
 
         self.val_ce: list[float] = []
         self.val_acc: list[float] = []
@@ -160,9 +160,11 @@ class DiDi(LightningModule):
 
         cached_context = None
         ones = torch.ones(x_0.shape[0], dtype=torch.long, device=x_0.device)
+        noise = torch.empty_like(x_0)
         for time in range(self.diffusion_steps, 1, -self.step_freq):
             t = ones * time
-            x_t = get_xt(x_0, self.alphas_cumprod_prev, t)
+            noise.normal_(0, 1)
+            x_t = get_xt(x_0, self.alphas_cumprod_prev, t, noise)
             x_0, cached_context = self(
                 encoder_input_ids=context.input_ids,
                 encoder_attention_mask=context.attention_mask,
@@ -171,7 +173,8 @@ class DiDi(LightningModule):
                 context=cached_context,
             )
 
-        x_1 = get_xt(x_0, self.alphas_cumprod_prev, ones)
+        noise.normal_(0, 1)
+        x_1 = get_xt(x_0, self.alphas_cumprod_prev, ones, noise)
         x_0, _ = self(
             encoder_input_ids=context.input_ids,
             encoder_attention_mask=context.attention_mask,
