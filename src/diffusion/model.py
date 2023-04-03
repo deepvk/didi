@@ -45,6 +45,17 @@ def flat_mean(tensor):
     return tensor.mean(dim=list(range(1, len(tensor.shape))))
 
 
+class FourierFeatures(nn.Module):
+    def __init__(self, in_features, out_features, std=1.0):
+        super().__init__()
+        assert out_features % 2 == 0
+        self.register_buffer("weight", torch.randn([out_features // 2, in_features]) * std)
+
+    def forward(self, input):
+        f = 2 * torch.pi * input @ self.weight.T
+        return torch.cat([f.cos(), f.sin()], dim=-1)
+
+
 class DiDi(LightningModule):
     def __init__(
         self,
@@ -67,7 +78,7 @@ class DiDi(LightningModule):
         self.step_freq = step_freq
 
         self.emb = nn.Embedding(vocabulary_size, emb_dim, padding_idx=pad_idx)
-        self.time_embeds = nn.Embedding(diffusion_steps + 1, emb_dim)
+        self.sigma_embeds = FourierFeatures(1, emb_dim)
 
         self.encoder = encoder
         freeze_params(self.encoder)
@@ -104,7 +115,7 @@ class DiDi(LightningModule):
         encoder_input_ids=None,
         encoder_attention_mask=None,
         decoder_inputs_embeds=None,
-        time_ids=None,
+        sigmas=None,
         context=None,
     ):
         if encoder_input_ids is None and context is None:
@@ -116,8 +127,8 @@ class DiDi(LightningModule):
                     input_ids=encoder_input_ids, attention_mask=encoder_attention_mask
                 ).last_hidden_state
 
-        time_embeds = self.time_embeds(time_ids)
-        input_embeds = decoder_inputs_embeds + time_embeds.unsqueeze(1)
+        sigmas_embeds = self.sigma_embeds(sigmas)
+        input_embeds = decoder_inputs_embeds + sigmas_embeds
 
         output = self.decoder(
             inputs_embeds=input_embeds, encoder_hidden_states=context, encoder_attention_mask=encoder_attention_mask
@@ -129,12 +140,14 @@ class DiDi(LightningModule):
         emb = self.emb(target.input_ids)
 
         # x: [batch size; seq len; emb dim], t: [batch size]
-        x_0, x_t, t = get_diffusion_variables(self.diffusion_steps, emb, self.alphas_cumprod_prev, self.sigma_0)
+        x_0, x_t, sigma_t, t = get_diffusion_variables(
+            self.diffusion_steps, emb, self.alphas_cumprod_prev, self.sigma_0
+        )
         x_0_hat, _ = self(
             encoder_input_ids=context.input_ids,
             encoder_attention_mask=context.attention_mask,
             decoder_inputs_embeds=x_t,
-            time_ids=t,
+            sigmas=sigma_t,
         )  # [batch size; seq len; emb dim]
 
         logits = self.classifier(x_0)  # [batch size; seq len; vocab size]
@@ -164,22 +177,22 @@ class DiDi(LightningModule):
         for time in range(self.diffusion_steps, 1, -self.step_freq):
             t = ones * time
             noise.normal_(0, 1)
-            x_t = get_xt(x_0, self.alphas_cumprod_prev, t, noise)
+            x_t, sigma_t = get_xt(x_0, self.alphas_cumprod_prev, t, noise)
             x_0, cached_context = self(
                 encoder_input_ids=context.input_ids,
                 encoder_attention_mask=context.attention_mask,
                 decoder_inputs_embeds=x_t,
-                time_ids=t,
+                sigmas=sigma_t,
                 context=cached_context,
             )
 
         noise.normal_(0, 1)
-        x_1 = get_xt(x_0, self.alphas_cumprod_prev, ones, noise)
+        x_1, sigma_1 = get_xt(x_0, self.alphas_cumprod_prev, ones, noise)
         x_0, _ = self(
             encoder_input_ids=context.input_ids,
             encoder_attention_mask=context.attention_mask,
             decoder_inputs_embeds=x_1,
-            time_ids=ones,
+            sigmas=sigma_1,
             context=cached_context,
         )
 
