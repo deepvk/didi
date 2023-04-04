@@ -175,7 +175,7 @@ class DiDi(LightningModule):
     def validation_step(self, batch, batch_idx):
         context, target = batch
         emb = self.emb(target.input_ids)
-        x_t = torch.randn_like(emb)
+        x_t = torch.randn_like(emb) * self.sigmas[-1]
 
         cached_context = None
         ones = torch.ones((emb.shape[0], 1), dtype=torch.long, device=emb.device)
