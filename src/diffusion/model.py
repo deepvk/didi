@@ -4,7 +4,7 @@ from torch import nn
 from transformers import AutoModel
 from transformers import BertConfig
 
-from src.diffusion.utils import configure_schedule, get_diffusion_variables, prepare_x0, get_xt
+from src.diffusion.utils import configure_schedule, get_diffusion_variables, get_euler_variables
 from src.metrics import calculate_batch_ce
 
 
@@ -71,6 +71,9 @@ class DiDi(LightningModule):
         optimizer: str = "AdamW",
         lr: float = 0.0001,
         momentum: float = 0.95,
+        s_churn: float = 0.0,
+        s_tmin: float = 0.0,
+        s_tmax: float = float("+inf"),
     ):
         super().__init__()
         self.diffusion_steps = diffusion_steps
@@ -80,14 +83,18 @@ class DiDi(LightningModule):
         self.emb = nn.Embedding(vocabulary_size, emb_dim, padding_idx=pad_idx)
         self.sigma_embeds = FourierFeatures(1, emb_dim)
 
+        self.s_churn = s_churn
+        self.s_tmin = s_tmin
+        self.s_tmax = s_tmax
+
         self.encoder = encoder
         freeze_params(self.encoder)
 
         self.decoder = decoder
         self.classifier = nn.Linear(emb_dim, vocabulary_size)
 
-        alphas_cumprod_prev, self.sigma_0 = configure_schedule(diffusion_steps, schedule)
-        self.register_buffer("alphas_cumprod_prev", alphas_cumprod_prev)
+        sigmas = configure_schedule(diffusion_steps, schedule)
+        self.register_buffer("sigmas", sigmas)
 
         self.optimizer = optimizer
         self.lr = lr
@@ -128,7 +135,7 @@ class DiDi(LightningModule):
                 ).last_hidden_state
 
         sigmas_embeds = self.sigma_embeds(sigmas)
-        input_embeds = decoder_inputs_embeds + sigmas_embeds
+        input_embeds = decoder_inputs_embeds + sigmas_embeds.unsqueeze(1)
 
         output = self.decoder(
             inputs_embeds=input_embeds, encoder_hidden_states=context, encoder_attention_mask=encoder_attention_mask
@@ -137,12 +144,11 @@ class DiDi(LightningModule):
 
     def training_step(self, batch, batch_idx):
         context, target = batch
-        emb = self.emb(target.input_ids)
+        emb = x_0 = self.emb(target.input_ids)
 
         # x: [batch size; seq len; emb dim], t: [batch size]
-        x_0, x_t, sigma_t, t = get_diffusion_variables(
-            self.diffusion_steps, emb, self.alphas_cumprod_prev, self.sigma_0
-        )
+        x_t, sigma_t, t = get_diffusion_variables(self.diffusion_steps, emb, self.sigmas)
+
         x_0_hat, _ = self(
             encoder_input_ids=context.input_ids,
             encoder_attention_mask=context.attention_mask,
@@ -169,30 +175,41 @@ class DiDi(LightningModule):
     def validation_step(self, batch, batch_idx):
         context, target = batch
         emb = self.emb(target.input_ids)
-        x_0 = prepare_x0(emb, self.sigma_0)
+        x_t = torch.randn_like(emb)
 
         cached_context = None
-        ones = torch.ones(x_0.shape[0], dtype=torch.long, device=x_0.device)
-        noise = torch.empty_like(x_0)
+        ones = torch.ones((emb.shape[0], 1), dtype=torch.long, device=emb.device)
+        noise = torch.empty_like(emb)
+
+        num_sigmas = len(range(self.diffusion_steps, 1, -self.step_freq))
+
         for time in range(self.diffusion_steps, 1, -self.step_freq):
-            t = ones * time
-            noise.normal_(0, 1)
-            x_t, sigma_t = get_xt(x_0, self.alphas_cumprod_prev, t, noise)
+            x_t, sigma_t, sigma_hat = get_euler_variables(
+                x_t, noise, self.sigmas, time, self.s_churn, self.s_tmin, self.s_tmax, num_sigmas
+            )
+
             x_0, cached_context = self(
                 encoder_input_ids=context.input_ids,
                 encoder_attention_mask=context.attention_mask,
                 decoder_inputs_embeds=x_t,
-                sigmas=sigma_t,
+                sigmas=sigma_hat * ones,
                 context=cached_context,
             )
 
-        noise.normal_(0, 1)
-        x_1, sigma_1 = get_xt(x_0, self.alphas_cumprod_prev, ones, noise)
+            d = (x_t - x_0) / sigma_t
+            dt = self.sigmas[time - self.step_freq] - sigma_hat
+
+            x_t = x_t + d * dt
+
+        x_1, sigma_1, sigma_hat = get_euler_variables(
+            x_t, noise, self.sigmas, 1, self.s_churn, self.s_tmin, self.s_tmax, num_sigmas
+        )
+
         x_0, _ = self(
             encoder_input_ids=context.input_ids,
             encoder_attention_mask=context.attention_mask,
             decoder_inputs_embeds=x_1,
-            sigmas=sigma_1,
+            sigmas=sigma_hat * ones,
             context=cached_context,
         )
 
