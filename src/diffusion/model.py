@@ -4,7 +4,7 @@ from torch import nn
 from transformers import AutoModel
 from transformers import BertConfig
 
-from src.diffusion.utils import configure_schedule, get_diffusion_variables, get_euler_variables
+from src.diffusion.utils import configure_schedule, scale_input, get_diffusion_variables, get_euler_variables
 from src.metrics import calculate_batch_ce
 
 
@@ -45,17 +45,6 @@ def flat_mean(tensor):
     return tensor.mean(dim=list(range(1, len(tensor.shape))))
 
 
-class FourierFeatures(nn.Module):
-    def __init__(self, in_features, out_features, std=1.0):
-        super().__init__()
-        assert out_features % 2 == 0
-        self.register_buffer("weight", torch.randn([out_features // 2, in_features]) * std)
-
-    def forward(self, input):
-        f = 2 * torch.pi * input @ self.weight.T
-        return torch.cat([f.cos(), f.sin()], dim=-1)
-
-
 class DiDi(LightningModule):
     def __init__(
         self,
@@ -81,7 +70,7 @@ class DiDi(LightningModule):
         self.step_freq = step_freq
 
         self.emb = nn.Embedding(vocabulary_size, emb_dim, padding_idx=pad_idx)
-        self.sigma_embeds = FourierFeatures(1, emb_dim)
+        self.time_embeds = nn.Embedding(diffusion_steps + 1, emb_dim)
 
         self.s_churn = s_churn
         self.s_tmin = s_tmin
@@ -92,6 +81,7 @@ class DiDi(LightningModule):
 
         self.decoder = decoder
         self.classifier = nn.Linear(emb_dim, vocabulary_size)
+        self.context = None
 
         sigmas = configure_schedule(diffusion_steps, schedule)
         self.register_buffer("sigmas", sigmas)
@@ -122,38 +112,41 @@ class DiDi(LightningModule):
         encoder_input_ids=None,
         encoder_attention_mask=None,
         decoder_inputs_embeds=None,
-        sigmas=None,
-        context=None,
+        time_ids=None,
     ):
-        if encoder_input_ids is None and context is None:
+        if encoder_input_ids is None and self.context is None:
             raise ValueError("Either `encoder_input_ids` or `context` must be provided.")
 
-        if context is None:
+        if self.context is None:
             with torch.no_grad():
-                context = self.encoder(
+                self.context = self.encoder(
                     input_ids=encoder_input_ids, attention_mask=encoder_attention_mask
                 ).last_hidden_state
 
-        sigmas_embeds = self.sigma_embeds(sigmas)
-        input_embeds = decoder_inputs_embeds + sigmas_embeds.unsqueeze(1)
+        time_embeds = self.time_embeds(time_ids)
+        input_embeds = decoder_inputs_embeds + time_embeds.unsqueeze(1)
 
         output = self.decoder(
-            inputs_embeds=input_embeds, encoder_hidden_states=context, encoder_attention_mask=encoder_attention_mask
+            inputs_embeds=input_embeds,
+            encoder_hidden_states=self.context,
+            encoder_attention_mask=encoder_attention_mask,
         ).last_hidden_state
-        return output, context
+        return output
 
     def training_step(self, batch, batch_idx):
+        self.context = None
+
         context, target = batch
         emb = x_0 = self.emb(target.input_ids)
 
         # x: [batch size; seq len; emb dim], t: [batch size]
-        x_t, sigma_t, t = get_diffusion_variables(self.diffusion_steps, emb, self.sigmas)
+        x_t, t = get_diffusion_variables(self.diffusion_steps, x_0, self.sigmas)
 
-        x_0_hat, _ = self(
+        x_0_hat = self(
             encoder_input_ids=context.input_ids,
             encoder_attention_mask=context.attention_mask,
             decoder_inputs_embeds=x_t,
-            sigmas=sigma_t,
+            time_ids=t,
         )  # [batch size; seq len; emb dim]
 
         logits = self.classifier(x_0)  # [batch size; seq len; vocab size]
@@ -172,46 +165,39 @@ class DiDi(LightningModule):
         self.log_dict(metrics, sync_dist=True, on_step=True, on_epoch=False)
         return loss
 
+    def euler_step(self, x_t, sigma_t, context, t, next_t, num_sigmas, ones, noise):
+        x_t = scale_input(x_t, sigma_t)
+
+        x_0 = self(
+            encoder_input_ids=context.input_ids,
+            encoder_attention_mask=context.attention_mask,
+            decoder_inputs_embeds=x_t,
+            time_ids=t * ones,
+        )
+
+        x_t, sigma_hat = get_euler_variables(x_t, noise, sigma_t, self.s_churn, self.s_tmin, self.s_tmax, num_sigmas)
+
+        d = (x_t - x_0) / sigma_t
+        dt = self.sigmas[next_t] - sigma_hat
+        x_t = x_t + d * dt
+        return x_t
+
     def validation_step(self, batch, batch_idx):
+        self.context = None
+
         context, target = batch
         emb = self.emb(target.input_ids)
         x_t = torch.randn_like(emb) * self.sigmas[-1]
 
-        cached_context = None
         ones = torch.ones((emb.shape[0], 1), dtype=torch.long, device=emb.device)
         noise = torch.empty_like(emb)
 
         num_sigmas = len(range(self.diffusion_steps, 1, -self.step_freq))
 
-        for time in range(self.diffusion_steps, 1, -self.step_freq):
-            x_t, sigma_t, sigma_hat = get_euler_variables(
-                x_t, noise, self.sigmas, time, self.s_churn, self.s_tmin, self.s_tmax, num_sigmas
-            )
+        for t in range(self.diffusion_steps, 1, -self.step_freq):
+            x_t = self.euler_step(x_t, self.sigmas[t], context, t, max(t - self.step_freq, 1), num_sigmas, ones, noise)
 
-            x_0, cached_context = self(
-                encoder_input_ids=context.input_ids,
-                encoder_attention_mask=context.attention_mask,
-                decoder_inputs_embeds=x_t,
-                sigmas=sigma_hat * ones,
-                context=cached_context,
-            )
-
-            d = (x_t - x_0) / sigma_t
-            dt = self.sigmas[time - self.step_freq] - sigma_hat
-
-            x_t = x_t + d * dt
-
-        x_1, sigma_1, sigma_hat = get_euler_variables(
-            x_t, noise, self.sigmas, 1, self.s_churn, self.s_tmin, self.s_tmax, num_sigmas
-        )
-
-        x_0, _ = self(
-            encoder_input_ids=context.input_ids,
-            encoder_attention_mask=context.attention_mask,
-            decoder_inputs_embeds=x_1,
-            sigmas=sigma_hat * ones,
-            context=cached_context,
-        )
+        x_0 = self.euler_step(x_t, self.sigmas, context, 1, 0, num_sigmas, ones, noise)
 
         logits = self.classifier(x_0)
         predictions = logits.argmax(-1)
