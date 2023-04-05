@@ -29,7 +29,7 @@ def get_diffusion_variables(diffusion_steps: int, x_0: torch.Tensor, sigmas: tor
     if noise is None:
         noise = torch.normal(0, 1, size=x_0.shape, device=x_0.device)
 
-    t = torch.randint(1, diffusion_steps + 1, size=(x_0.shape[0],), device=x_0.device)
+    t = torch.randint(1, diffusion_steps + 1, size=(x_0.shape[0], 1), device=x_0.device)
     sigma_t = sigmas[t].view(-1, 1, 1)
     x_t = scale_input(x_0 + sigma_t * noise, sigma_t)
     return x_t, t

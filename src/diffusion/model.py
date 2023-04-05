@@ -124,7 +124,7 @@ class DiDi(LightningModule):
                 ).last_hidden_state
 
         time_embeds = self.time_embeds(time_ids)
-        input_embeds = decoder_inputs_embeds + time_embeds.unsqueeze(1)
+        input_embeds = decoder_inputs_embeds + time_embeds
 
         output = self.decoder(
             inputs_embeds=input_embeds,
@@ -137,7 +137,7 @@ class DiDi(LightningModule):
         self.context = None
 
         context, target = batch
-        emb = x_0 = self.emb(target.input_ids)
+        x_0 = self.emb(target.input_ids)
 
         # x: [batch size; seq len; emb dim], t: [batch size]
         x_t, t = get_diffusion_variables(self.diffusion_steps, x_0, self.sigmas)
@@ -153,11 +153,8 @@ class DiDi(LightningModule):
         ce = calculate_batch_ce(logits, target.input_ids, target.attention_mask)
 
         non_pad_mask = target.attention_mask.unsqueeze(-1)
-        mse = torch.where(
-            t == 1,
-            flat_mean((x_0_hat - emb) ** 2 * non_pad_mask),
-            flat_mean((x_0_hat - x_0) ** 2 * non_pad_mask),
-        ).mean()
+        mse = ((x_0_hat - x_0) ** 2 * non_pad_mask).mean()
+
         t0_loss = (x_0**2 * non_pad_mask).mean()
         loss = mse + ce + t0_loss
 
@@ -197,7 +194,7 @@ class DiDi(LightningModule):
         for t in range(self.diffusion_steps, 1, -self.step_freq):
             x_t = self.euler_step(x_t, self.sigmas[t], context, t, max(t - self.step_freq, 1), num_sigmas, ones, noise)
 
-        x_0 = self.euler_step(x_t, self.sigmas, context, 1, 0, num_sigmas, ones, noise)
+        x_0 = self.euler_step(x_t, self.sigmas[1], context, 1, 0, num_sigmas, ones, noise)
 
         logits = self.classifier(x_0)
         predictions = logits.argmax(-1)
