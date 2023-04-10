@@ -4,7 +4,7 @@ from torch import nn
 from transformers import AutoModel
 from transformers import BertConfig
 
-from src.diffusion.utils import configure_schedule, scale_input, get_diffusion_variables, get_euler_variables
+from src.diffusion.utils import configure_schedule, get_x0, scale_input, get_diffusion_variables, get_euler_variables
 from src.metrics import calculate_batch_ce
 
 
@@ -82,8 +82,9 @@ class DiDi(LightningModule):
         self.decoder = decoder
         self.classifier = nn.Linear(emb_dim, vocabulary_size)
 
-        sigmas = configure_schedule(diffusion_steps, schedule)
+        sigmas, std_0 = configure_schedule(diffusion_steps, schedule)
         self.register_buffer("sigmas", sigmas)
+        self.register_buffer("std_0", std_0)
 
         self.optimizer = optimizer
         self.lr = lr
@@ -135,7 +136,8 @@ class DiDi(LightningModule):
 
     def training_step(self, batch: list, batch_idx: int):
         raw_context, target = batch
-        x_0 = self.emb(target.input_ids)
+        emb = self.emb(target.input_ids)
+        x_0 = get_x0(emb, self.std_0)
         noise = torch.randn_like(x_0)
 
         # x: [batch size; seq len; emb dim], t: [batch size]
@@ -152,7 +154,11 @@ class DiDi(LightningModule):
         ce = calculate_batch_ce(logits, target.input_ids, target.attention_mask)
 
         non_pad_mask = target.attention_mask.unsqueeze(-1)
-        mse = ((x_0_hat - x_0) ** 2 * non_pad_mask).mean()
+        mse = torch.where(
+            t == 1,
+            flat_mean((x_0_hat - emb) ** 2 * non_pad_mask),
+            flat_mean((x_0_hat - x_0) ** 2 * non_pad_mask),
+        ).mean()
 
         t0_loss = (x_0**2 * non_pad_mask).mean()
         loss = mse + ce + t0_loss

@@ -18,7 +18,13 @@ def configure_schedule(steps: int, schedule: str):
     sigmas = ((1 - alphas_cumprod) / alphas_cumprod) ** 0.5
     sigmas = torch.cat([sigmas.new_zeros([1]), sigmas])
 
-    return sigmas
+    return sigmas, torch.sqrt(betas[0])
+
+
+def get_x0(emb, std):
+    noise = torch.randn_like(emb)
+    x_0 = emb + std * noise
+    return x_0
 
 
 def scale_input(input, sigma_t):
