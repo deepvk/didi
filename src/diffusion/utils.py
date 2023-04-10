@@ -25,19 +25,22 @@ def scale_input(input, sigma_t):
     return input / (sigma_t**2 + 1) ** 0.5
 
 
-def get_diffusion_variables(diffusion_steps: int, x_0: torch.Tensor, sigmas: torch.Tensor, noise: torch.Tensor = None):
-    if noise is None:
-        noise = torch.normal(0, 1, size=x_0.shape, device=x_0.device)
-
+def get_diffusion_variables(diffusion_steps: int, x_0: torch.Tensor, sigmas: torch.Tensor, noise: torch.Tensor):
     t = torch.randint(1, diffusion_steps + 1, size=(x_0.shape[0], 1), device=x_0.device)
     sigma_t = sigmas[t].view(-1, 1, 1)
     x_t = scale_input(x_0 + sigma_t * noise, sigma_t)
     return x_t, t
 
 
-def get_euler_variables(x_t, noise, sigma_t, s_churn, s_tmin, s_tmax, num_sigmas):
-    noise.normal_(0, 1)
-
+def get_euler_variables(
+    x_t: torch.Tensor,
+    noise: torch.Tensor,
+    sigma_t: torch.Tensor,
+    s_churn: float,
+    s_tmin: float,
+    s_tmax: float,
+    num_sigmas: int,
+):
     gamma = min(s_churn / num_sigmas, 2**0.5 - 1) if s_tmin <= sigma_t <= s_tmax else 0.0
     sigma_hat = sigma_t * (gamma + 1)
 

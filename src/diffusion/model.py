@@ -109,10 +109,10 @@ class DiDi(LightningModule):
 
     def forward(
         self,
-        encoder_input_ids=None,
-        encoder_attention_mask=None,
-        decoder_inputs_embeds=None,
-        time_ids=None,
+        encoder_input_ids: torch.Tensor = None,
+        encoder_attention_mask: torch.Tensor = None,
+        decoder_inputs_embeds: torch.Tensor = None,
+        time_ids: torch.Tensor = None,
     ):
         if encoder_input_ids is None and self.context is None:
             raise ValueError("Either `encoder_input_ids` or `context` must be provided.")
@@ -133,14 +133,15 @@ class DiDi(LightningModule):
         ).last_hidden_state
         return output
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch: list, batch_idx: int):
         self.context = None
 
         context, target = batch
         x_0 = self.emb(target.input_ids)
+        noise = torch.randn_like(x_0)
 
         # x: [batch size; seq len; emb dim], t: [batch size]
-        x_t, t = get_diffusion_variables(self.diffusion_steps, x_0, self.sigmas)
+        x_t, t = get_diffusion_variables(self.diffusion_steps, x_0, self.sigmas, noise)
 
         x_0_hat = self(
             encoder_input_ids=context.input_ids,
@@ -179,7 +180,7 @@ class DiDi(LightningModule):
         x_t = x_t + d * dt
         return x_t
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch: list, batch_idx: int):
         self.context = None
 
         context, target = batch
@@ -192,8 +193,10 @@ class DiDi(LightningModule):
         num_sigmas = len(range(self.diffusion_steps, 1, -self.step_freq))
 
         for t in range(self.diffusion_steps, 1, -self.step_freq):
+            noise.normal_(0, 1)
             x_t = self.euler_step(x_t, self.sigmas[t], context, t, max(t - self.step_freq, 1), num_sigmas, ones, noise)
 
+        noise.normal_(0, 1)
         x_0 = self.euler_step(x_t, self.sigmas[1], context, 1, 0, num_sigmas, ones, noise)
 
         logits = self.classifier(x_0)
