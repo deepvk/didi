@@ -81,7 +81,6 @@ class DiDi(LightningModule):
 
         self.decoder = decoder
         self.classifier = nn.Linear(emb_dim, vocabulary_size)
-        self.context = None
 
         sigmas = configure_schedule(diffusion_steps, schedule)
         self.register_buffer("sigmas", sigmas)
@@ -113,13 +112,14 @@ class DiDi(LightningModule):
         encoder_attention_mask: torch.Tensor = None,
         decoder_inputs_embeds: torch.Tensor = None,
         time_ids: torch.Tensor = None,
+        context: torch.Tensor = None,
     ):
-        if encoder_input_ids is None and self.context is None:
+        if encoder_input_ids is None and context is None:
             raise ValueError("Either `encoder_input_ids` or `context` must be provided.")
 
-        if self.context is None:
+        if context is None:
             with torch.no_grad():
-                self.context = self.encoder(
+                context = self.encoder(
                     input_ids=encoder_input_ids, attention_mask=encoder_attention_mask
                 ).last_hidden_state
 
@@ -128,24 +128,22 @@ class DiDi(LightningModule):
 
         output = self.decoder(
             inputs_embeds=input_embeds,
-            encoder_hidden_states=self.context,
+            encoder_hidden_states=context,
             encoder_attention_mask=encoder_attention_mask,
         ).last_hidden_state
-        return output
+        return output, context
 
     def training_step(self, batch: list, batch_idx: int):
-        self.context = None
-
-        context, target = batch
+        raw_context, target = batch
         x_0 = self.emb(target.input_ids)
         noise = torch.randn_like(x_0)
 
         # x: [batch size; seq len; emb dim], t: [batch size]
         x_t, t = get_diffusion_variables(self.diffusion_steps, x_0, self.sigmas, noise)
 
-        x_0_hat = self(
-            encoder_input_ids=context.input_ids,
-            encoder_attention_mask=context.attention_mask,
+        x_0_hat, _ = self(
+            encoder_input_ids=raw_context.input_ids,
+            encoder_attention_mask=raw_context.attention_mask,
             decoder_inputs_embeds=x_t,
             time_ids=t,
         )  # [batch size; seq len; emb dim]
@@ -163,14 +161,15 @@ class DiDi(LightningModule):
         self.log_dict(metrics, sync_dist=True, on_step=True, on_epoch=False)
         return loss
 
-    def euler_step(self, x_t, sigma_t, context, t, next_t, num_sigmas, ones, noise):
+    def euler_step(self, x_t, sigma_t, raw_context, cached_context, t, next_t, num_sigmas, ones, noise):
         x_t = scale_input(x_t, sigma_t)
 
-        x_0 = self(
-            encoder_input_ids=context.input_ids,
-            encoder_attention_mask=context.attention_mask,
+        x_0, cached_context = self(
+            encoder_input_ids=raw_context.input_ids,
+            encoder_attention_mask=raw_context.attention_mask,
             decoder_inputs_embeds=x_t,
             time_ids=t * ones,
+            context=cached_context,
         )
 
         x_t, sigma_hat = get_euler_variables(x_t, noise, sigma_t, self.s_churn, self.s_tmin, self.s_tmax, num_sigmas)
@@ -178,15 +177,14 @@ class DiDi(LightningModule):
         d = (x_t - x_0) / sigma_t
         dt = self.sigmas[next_t] - sigma_hat
         x_t = x_t + d * dt
-        return x_t
+        return x_t, cached_context
 
     def validation_step(self, batch: list, batch_idx: int):
-        self.context = None
-
-        context, target = batch
+        raw_context, target = batch
         emb = self.emb(target.input_ids)
         x_t = torch.randn_like(emb) * self.sigmas[-1]
 
+        cached_context = None
         ones = torch.ones((emb.shape[0], 1), dtype=torch.long, device=emb.device)
         noise = torch.empty_like(emb)
 
@@ -194,10 +192,12 @@ class DiDi(LightningModule):
 
         for t in range(self.diffusion_steps, 1, -self.step_freq):
             noise.normal_(0, 1)
-            x_t = self.euler_step(x_t, self.sigmas[t], context, t, max(t - self.step_freq, 1), num_sigmas, ones, noise)
+            x_t, cached_context = self.euler_step(
+                x_t, self.sigmas[t], raw_context, cached_context, t, max(t - self.step_freq, 1), num_sigmas, ones, noise
+            )
 
         noise.normal_(0, 1)
-        x_0 = self.euler_step(x_t, self.sigmas[1], context, 1, 0, num_sigmas, ones, noise)
+        x_0, _ = self.euler_step(x_t, self.sigmas[1], raw_context, cached_context, 1, 0, num_sigmas, ones, noise)
 
         logits = self.classifier(x_0)
         predictions = logits.argmax(-1)
