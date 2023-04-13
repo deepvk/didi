@@ -1,8 +1,7 @@
 import glob
 import json
 from itertools import cycle
-from os import environ
-from typing import Iterator, Iterable
+from typing import Iterator
 
 from loguru import logger
 from torch.utils.data import IterableDataset
@@ -44,8 +43,9 @@ class RedditDataset(IterableDataset):
         self.files = glob.glob(file_glob)
         zero_rank_info(f"Using files: {', '.join(self.files)}")
 
-        self.infinite = infinite
-        zero_rank_info(f"Infinite mode is enabled")
+        if infinite:
+            zero_rank_info(f"Infinite mode is enabled, cycle files")
+            self.files = cycle(self.files)
 
     @property
     def vocab_size(self) -> int:
@@ -61,16 +61,8 @@ class RedditDataset(IterableDataset):
         logger.info(msg)
 
     def __iter__(self) -> Iterator[tuple[str, str]]:
-        self._ws, self._rank = int(environ.get("WORLD_SIZE", 1)), int(environ.get("LOCAL_RANK", 0))
-
-        shards: Iterable[str] = self.files[self._rank :: self._ws]
-        self._log(f"Shards to use (infinite: {self.infinite}): {', '.join(shards)}")
-        if self.infinite:
-            shards = cycle(shards)
-
-        for shard in shards:
-            self._log(f"Processing {shard}")
-            with open(shard, "rt") as f_in:
+        for file in self.files:
+            with open(file, "rt") as f_in:
                 for line in f_in:
                     sample = json.loads(line)
                     utterances = [self.bos_token + it + self.eos_token for it in sample["thread"]]

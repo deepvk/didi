@@ -2,8 +2,9 @@ from argparse import ArgumentParser
 
 from loguru import logger
 from torch.utils.data import DataLoader
-from tqdm.auto import trange
+from tqdm import trange
 
+from src.data.distributed_dataset import DistributedIterableDataset
 from src.data.reddit_dataset import RedditDataset
 
 
@@ -15,7 +16,8 @@ def print_sample(batch, idx, tokenizer):
 
 def main(file_glob, tokenizer_name, seq_len, bs, skip, infinite):
     dataset = RedditDataset(file_glob, tokenizer_name, seq_len, infinite=infinite)
-    dataloader = DataLoader(dataset, batch_size=bs, collate_fn=dataset.collate_fn)
+    did_dataset = DistributedIterableDataset(dataset)
+    dataloader = DataLoader(did_dataset, batch_size=bs, collate_fn=dataset.collate_fn, num_workers=10)
     batch_iter = iter(dataloader)
 
     logger.info(f"Skipping {skip} samples")
