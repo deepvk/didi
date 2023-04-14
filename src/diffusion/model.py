@@ -1,5 +1,7 @@
 import torch
+import wandb
 from lightning import LightningModule
+from lightning.pytorch.loggers import WandbLogger
 from torch import nn
 from transformers import AutoModel
 from transformers import BertConfig
@@ -63,6 +65,7 @@ class DiDi(LightningModule):
         s_churn: float = 0.0,
         s_tmin: float = 0.0,
         s_tmax: float = float("+inf"),
+        batch_decoder=None
     ):
         super().__init__()
         self.diffusion_steps = diffusion_steps
@@ -92,6 +95,7 @@ class DiDi(LightningModule):
 
         self.val_ce: list[float] = []
         self.val_acc: list[float] = []
+        self.batch_decoder = batch_decoder
 
     def configure_optimizers(self):
         if self.optimizer == "AdamW":
@@ -212,6 +216,14 @@ class DiDi(LightningModule):
         self.val_acc.append(
             (((predictions == target.input_ids) * target.attention_mask).sum() / target.attention_mask.sum()).item()
         )
+
+        if self.batch_decoder and batch_idx == 0:
+            # Should be list[list[str]]
+            decoded_context = self.batch_decoder(raw_context.input_ids)
+            decoded_reply = self.batch_decoder(target.input_ids)
+            decoded_predictions = self.batch_decoder(predictions)
+            data = list(zip(decoded_context, decoded_reply, decoded_predictions))
+            self.logger.log_text("samples", columns=["context", "reply", "predictions"], data=data)
 
     def on_validation_epoch_end(self):
         metrics = {"val/ce": sum(self.val_ce) / len(self.val_ce), "val/accuracy": sum(self.val_acc) / len(self.val_acc)}

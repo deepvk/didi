@@ -1,4 +1,5 @@
 import argparse
+from functools import partial
 from os import environ
 from os.path import join
 
@@ -53,7 +54,16 @@ def main(config_path: str, dataset_dir: str, ckpt_dir: str = None):
     )
 
     encoder, decoder, emb_dim = get_components(config.base_name, **config.decoder)
-    model = DiDi(encoder, decoder, emb_dim, train_dataset.vocab_size, pad_idx=train_dataset.pad_idx, **config.didi)
+    batch_decoder = partial(train_dataset.reply_tokenizer.batch_decode, skip_special_tokens=False)
+    model = DiDi(
+        encoder,
+        decoder,
+        emb_dim,
+        train_dataset.vocab_size,
+        pad_idx=train_dataset.pad_idx,
+        batch_decoder=batch_decoder,
+        **config.didi,
+    )
 
     train_model(
         model,

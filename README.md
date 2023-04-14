@@ -35,7 +35,8 @@ We have collected all the comments for 2019.
 
 TODO: add preprocessing and filter steps
 
-A total of 237.212.662 dialogs, 100.000 each, are used for validation and testing.
+A total of `237.212.662` dialogs.
+`237.162.662` are used for train split, `25.000` each are used for validation and test splits.
 
 ### Fine-tuning
 
