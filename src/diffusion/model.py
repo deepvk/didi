@@ -68,6 +68,7 @@ class DiDi(LightningModule):
         batch_decoder=None
     ):
         super().__init__()
+        self.save_hyperparameters()
         self.diffusion_steps = diffusion_steps
         self.pad_idx = pad_idx
         self.step_freq = step_freq

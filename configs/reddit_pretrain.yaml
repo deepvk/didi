@@ -1,7 +1,10 @@
 seed: 0xBADB01
-base_name: "facebook/blenderbot-400M-distill"
-batch_size: 32
-save_interval: -1
+base_name: "facebook/blenderbot-3B"
+#base_name: "facebook/blenderbot-400M-distill"
+
+batch_size: 64
+val_batch_size: 128
+save_interval: 10_000
 
 dataset:
   max_context_len: 128
@@ -17,12 +20,13 @@ didi:
   schedule: "sqrt"
   step_freq: 10
   optimizer: "AdamW"
-  lr: 0.0001
-  momentum: 0.95
+  lr: 1e-4
+  s_churn: 80
+  s_tmin: 0.05
+  s_tmax: 50
 
 trainer:
-  devices: 1
-  accelerator: "gpu"
-#  strategy: "ddp"
-  max_steps: 1000
-  val_check_interval: 1000
+  devices: 8
+  max_steps: 50_000
+  val_check_interval: 10_000
+  precision: "bf16-mixed"

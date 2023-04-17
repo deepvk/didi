@@ -20,10 +20,11 @@ def configure_arg_parser():
     parser.add_argument("config_path", type=str, help="Path to YAML config file")
     parser.add_argument("dataset_dir", type=str, help="Path to dataset directory")
     parser.add_argument("--ckpt_dir", type=str, help="Path to checkpoint directory.")
+    parser.add_argument("--resume", type=str, help="Path to checkpoint file to resume training.")
     return parser
 
 
-def main(config_path: str, dataset_dir: str, ckpt_dir: str = None):
+def main(config_path: str, dataset_dir: str, ckpt_dir: str = None, resume: str = None):
     filter_warnings()
     setup_logger()
     environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -73,6 +74,7 @@ def main(config_path: str, dataset_dir: str, ckpt_dir: str = None):
         seed=config.seed,
         save_interval=config.save_interval,
         ckpt_dir=ckpt_dir,
+        resume=resume,
     )
 
 

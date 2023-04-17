@@ -15,7 +15,8 @@ def train_model(
     seed: int = 42,
     save_interval: int = -1,
     project_name: str = "didi",
-    ckpt_dir: str = None
+    ckpt_dir: str = None,
+    resume: str = None,
 ):
     seed_everything(seed)
 
@@ -44,4 +45,4 @@ def train_model(
         **train_parameters,
     )
 
-    trainer.fit(model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader)
+    trainer.fit(model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader, ckpt_path=resume)
