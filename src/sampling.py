@@ -15,7 +15,7 @@ def get_pretrained_model(model_path, config, tokenizer):
 
 
 @torch.no_grad()
-def sample(context, model, tokenizer, max_len, device, num_candidates=10, mode="ddpm", step_freq=10):
+def sample(context, model, tokenizer, max_len, mode, step_freq, device, num_candidates=10):
     tokenizer_kwargs = {
         "padding": True,
         "truncation": True,
@@ -23,9 +23,9 @@ def sample(context, model, tokenizer, max_len, device, num_candidates=10, mode="
         "add_special_tokens": False,
     }
 
-    raw_context = tokenizer(context, **tokenizer_kwargs)
+    raw_context = tokenizer(context, **tokenizer_kwargs).to(device)
 
-    emb_dim = model.emb(raw_context.input_ids.to(device)).shape[-1]
+    emb_dim = model.emb(raw_context.input_ids).shape[-1]
     shape = (num_candidates, max_len, emb_dim)
 
     x_t = torch.randn(shape, device=device) * model.sigmas[-1]
@@ -35,17 +35,19 @@ def sample(context, model, tokenizer, max_len, device, num_candidates=10, mode="
     noise = torch.empty(shape, device=device)
 
     if mode == "ddpm":
-        predictions = sample_ddpm(model, x_t, raw_context, cached_context, noise, ones, step_freq, device)
+        predictions = sample_ddpm(model, x_t, raw_context, cached_context, noise, ones, step_freq)
     elif mode == "euler":
-        predictions = sample_euler(model, x_t, raw_context, cached_context, noise, ones, step_freq, device)
+        predictions = sample_euler(model, x_t, raw_context, cached_context, noise, ones, step_freq)
     else:
         raise NotImplementedError(f"No {mode} sampling strategy")
 
-    replies = tokenizer.batch_decode(predictions)
+    eos_id = tokenizer.eos_token_id
+
+    replies = tokenizer.batch_decode(truncate_predictions(predictions, eos_id), skip_special_tokens=True)
     return select_reply(replies)
 
 
-def sample_euler(model, x_t, raw_context, cached_context, noise, ones, step_freq, device):
+def sample_euler(model, x_t, raw_context, cached_context, noise, ones, step_freq):
     diffusion_steps = model.diffusion_steps
     timesteps = range(diffusion_steps, 1, -step_freq)
     num_sigmas = len(timesteps)
@@ -64,17 +66,14 @@ def sample_euler(model, x_t, raw_context, cached_context, noise, ones, step_freq
     return predictions
 
 
-def sample_ddpm(model, x_t, raw_context, cached_context, noise, ones, step_freq, device):
+def sample_ddpm(model, x_t, raw_context, cached_context, noise, ones, step_freq):
     diffusion_steps = model.diffusion_steps
     timesteps = range(diffusion_steps, 1, -step_freq)
 
-    encoder_input_ids = raw_context.input_ids.to(device)
-    encoder_attention_mask = raw_context.attention_mask.to(device)
-
     for t in tqdm(timesteps):
         x_0, cached_context = model(
-            encoder_input_ids=encoder_input_ids,
-            encoder_attention_mask=encoder_attention_mask,
+            encoder_input_ids=raw_context.input_ids,
+            encoder_attention_mask=raw_context.attention_mask,
             decoder_inputs_embeds=x_t,
             time_ids=t * ones,
             context=cached_context,
@@ -85,7 +84,7 @@ def sample_ddpm(model, x_t, raw_context, cached_context, noise, ones, step_freq,
         x_t = scale_input(x_0 + sigma_t * noise, sigma_t)
 
     x_0, _ = model(
-        encoder_attention_mask=encoder_attention_mask,
+        encoder_attention_mask=raw_context.attention_mask,
         decoder_inputs_embeds=x_t,
         time_ids=ones,
         context=cached_context,
@@ -94,6 +93,18 @@ def sample_ddpm(model, x_t, raw_context, cached_context, noise, ones, step_freq,
     logits = model.classifier(x_0)
     predictions = logits.argmax(-1)
     return predictions
+
+
+def truncate_predictions(predictions, eos_id):
+    res = []
+
+    for prediction in predictions:
+        idx = (prediction == eos_id).nonzero()
+        if len(idx):
+            res.append(prediction[: idx[0] + 1])
+        else:
+            res.append(prediction)
+    return res
 
 
 def select_reply(replies):

@@ -12,16 +12,17 @@ def configure_arg_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("config_path", type=str, help="Path to YAML config file")
     parser.add_argument("model_path", type=str, help="Path to trained model file")
+    parser.add_argument("mode", type=str, nargs="?", default="ddpm", help="Sampling mode")
     return parser
 
 
-def main(config_path: str, model_path: str):
+def main(config_path: str, model_path: str, mode: str):
     config = OmegaConf.load(config_path)
 
     context_tokenizer = AutoTokenizer.from_pretrained(config.base_name, truncation_side="left")
 
-    eos = context_tokenizer.eos_token
     bos = context_tokenizer.bos_token
+    eos = context_tokenizer.eos_token
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -33,8 +34,10 @@ def main(config_path: str, model_path: str):
     while True:
         try:
             context += input("You: ")
-            reply = sample(context, model, context_tokenizer, config.dataset.max_target_len, device)
-            context += f"{eos}{bos}{reply}{eos}{bos}"
+            reply = sample(
+                context, model, context_tokenizer, config.dataset.max_target_len, mode, config.didi.step_freq, device
+            )
+            context += f"{eos} {bos}{reply}{eos} {bos}"
             print("DiDi:", reply)
         except KeyboardInterrupt:
             print("\nDiDi: Get back soon!")
