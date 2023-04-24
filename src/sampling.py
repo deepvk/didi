@@ -15,24 +15,15 @@ def get_pretrained_model(model_path, config, tokenizer):
 
 
 @torch.no_grad()
-def sample(context, model, tokenizer, max_len, mode, step_freq, device, num_candidates=10):
-    tokenizer_kwargs = {
-        "padding": True,
-        "truncation": True,
-        "return_tensors": "pt",
-        "add_special_tokens": False,
-    }
+def sample(raw_context, model, tokenizer, mode, step_freq, device, raw_output=False):
+    input_ids = raw_context.input_ids
+    emb = model.emb(input_ids)
 
-    raw_context = tokenizer(context, **tokenizer_kwargs).to(device)
-
-    emb_dim = model.emb(raw_context.input_ids).shape[-1]
-    shape = (num_candidates, max_len, emb_dim)
-
-    x_t = torch.randn(shape, device=device) * model.sigmas[-1]
+    x_t = torch.randn_like(emb) * model.sigmas[-1]
 
     cached_context = None
-    ones = torch.ones((shape[0], 1), dtype=torch.long, device=device)
-    noise = torch.empty(shape, device=device)
+    ones = torch.ones((emb.shape[0], 1), dtype=torch.long, device=device)
+    noise = torch.empty_like(emb)
 
     if mode == "ddpm":
         predictions = sample_ddpm(model, x_t, raw_context, cached_context, noise, ones, step_freq)
@@ -40,6 +31,9 @@ def sample(context, model, tokenizer, max_len, mode, step_freq, device, num_cand
         predictions = sample_euler(model, x_t, raw_context, cached_context, noise, ones, step_freq)
     else:
         raise NotImplementedError(f"No {mode} sampling strategy")
+
+    if raw_output:
+        return predictions
 
     eos_id = tokenizer.eos_token_id
 
@@ -108,4 +102,4 @@ def truncate_predictions(predictions, eos_id):
 
 
 def select_reply(replies):
-    return replies[0]
+    return replies

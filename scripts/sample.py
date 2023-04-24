@@ -19,6 +19,13 @@ def configure_arg_parser():
 def main(config_path: str, model_path: str, mode: str):
     config = OmegaConf.load(config_path)
 
+    tokenizer_kwargs = {
+        "padding": True,
+        "truncation": True,
+        "return_tensors": "pt",
+        "add_special_tokens": False,
+    }
+
     context_tokenizer = AutoTokenizer.from_pretrained(config.base_name, truncation_side="left")
 
     bos = context_tokenizer.bos_token
@@ -29,15 +36,14 @@ def main(config_path: str, model_path: str, mode: str):
     model = get_pretrained_model(model_path, config, context_tokenizer)
     model = model.to(device)
 
-    context = ""
+    context = f"{bos} "
 
     while True:
         try:
-            context += input("You: ")
-            reply = sample(
-                context, model, context_tokenizer, config.dataset.max_target_len, mode, config.didi.step_freq, device
-            )
-            context += f"{eos} {bos}{reply}{eos} {bos}"
+            context += f"{input('You: ')}{eos}"
+            raw_context = context_tokenizer(context, **tokenizer_kwargs).to(device)
+            reply = sample(raw_context, model, context_tokenizer, mode, config.didi.step_freq, device)[0]
+            context += f"{eos} {bos} {reply}{eos} {bos}"
             print("DiDi:", reply)
         except KeyboardInterrupt:
             print("\nDiDi: Get back soon!")
