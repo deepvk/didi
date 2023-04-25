@@ -26,7 +26,7 @@ def calculate_ppl(model, dataloader, pad_idx, config, device):
         pred_logits = sample(raw_context, model, None, "ddpm", config.didi.step_freq, device, raw_output=True)
 
         shift_labels = target_ids[..., 1:].contiguous()
-        shift_logits = pred_logits[..., 1:shift_labels.shape[1] + 1, :].contiguous()
+        shift_logits = pred_logits[..., 1 : shift_labels.shape[1] + 1, :].contiguous()
         shift_attention_mask_batch = pad_mask[..., 1:].contiguous().eq(0)
 
         perplexity_batch = torch.exp(
@@ -38,7 +38,6 @@ def calculate_ppl(model, dataloader, pad_idx, config, device):
         )
 
         ppls.append(perplexity_batch)
-        print(torch.concat(ppls).float().mean().item())
 
     ppl = torch.concat(ppls).float().mean().item()
     return ppl

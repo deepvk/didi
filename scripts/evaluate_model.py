@@ -20,7 +20,7 @@ from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 
 from src.data.reddit_dataset import RedditDataset
-from src.diffusion_metrics import calculate_ppl
+from src.diffusion.metrics import calculate_ppl
 from src.sampling import get_pretrained_model
 
 
