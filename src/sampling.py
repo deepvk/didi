@@ -1,5 +1,4 @@
 import torch
-from tqdm import tqdm
 
 from src.diffusion.model import DiDi
 from src.diffusion.model import get_components
@@ -26,17 +25,18 @@ def sample(raw_context, model, tokenizer, mode, step_freq, device, raw_output=Fa
     noise = torch.empty_like(emb)
 
     if mode == "ddpm":
-        predictions = sample_ddpm(model, x_t, raw_context, cached_context, noise, ones, step_freq)
+        logits = sample_ddpm(model, x_t, raw_context, cached_context, noise, ones, step_freq)
     elif mode == "euler":
-        predictions = sample_euler(model, x_t, raw_context, cached_context, noise, ones, step_freq)
+        logits = sample_euler(model, x_t, raw_context, cached_context, noise, ones, step_freq)
     else:
         raise NotImplementedError(f"No {mode} sampling strategy")
 
     if raw_output:
-        return predictions
+        return logits
 
     eos_id = tokenizer.eos_token_id
 
+    predictions = logits.argmax(-1)
     replies = tokenizer.batch_decode(truncate_predictions(predictions, eos_id), skip_special_tokens=True)
     return select_reply(replies)
 
@@ -46,7 +46,7 @@ def sample_euler(model, x_t, raw_context, cached_context, noise, ones, step_freq
     timesteps = range(diffusion_steps, 1, -step_freq)
     num_sigmas = len(timesteps)
 
-    for t in tqdm(timesteps):
+    for t in timesteps:
         noise.normal_(0, 1)
         x_t, cached_context = model.euler_step(
             x_t, model.sigmas[t], raw_context, cached_context, t, max(t - step_freq, 1), num_sigmas, ones, noise
@@ -56,15 +56,14 @@ def sample_euler(model, x_t, raw_context, cached_context, noise, ones, step_freq
     x_0, _ = model.euler_step(x_t, model.sigmas[1], raw_context, cached_context, 1, 0, num_sigmas, ones, noise)
 
     logits = model.classifier(x_0)
-    predictions = logits.argmax(-1)
-    return predictions
+    return logits
 
 
 def sample_ddpm(model, x_t, raw_context, cached_context, noise, ones, step_freq):
     diffusion_steps = model.diffusion_steps
     timesteps = range(diffusion_steps, 1, -step_freq)
 
-    for t in tqdm(timesteps):
+    for t in timesteps:
         x_0, cached_context = model(
             encoder_input_ids=raw_context.input_ids,
             encoder_attention_mask=raw_context.attention_mask,
@@ -85,8 +84,7 @@ def sample_ddpm(model, x_t, raw_context, cached_context, noise, ones, step_freq)
     )
 
     logits = model.classifier(x_0)
-    predictions = logits.argmax(-1)
-    return predictions
+    return logits
 
 
 def truncate_predictions(predictions, eos_id):
