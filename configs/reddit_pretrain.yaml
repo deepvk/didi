@@ -1,9 +1,9 @@
 seed: 0xBADB01
-base_name: "facebook/blenderbot-3B"
-#base_name: "facebook/blenderbot-400M-distill"
+#base_name: "facebook/blenderbot-3B"
+base_name: "facebook/blenderbot-400M-distill"
 
-batch_size: 64
-val_batch_size: 128
+batch_size: 200
+val_batch_size: 400
 save_interval: 10_000
 
 dataset:
@@ -12,13 +12,13 @@ dataset:
 
 decoder:
   mode: "bert"
-  num_hidden_layers: 12
+  num_hidden_layers: 6
   intermediate_size: 3072
 
 didi:
   diffusion_steps: 2000
   schedule: "sqrt"
-  step_freq: 10
+  step_freq: 20
   optimizer: "AdamW"
   lr: 1e-4
   s_churn: 80
@@ -29,4 +29,4 @@ trainer:
   devices: 8
   max_steps: 50_000
   val_check_interval: 10_000
-  precision: "bf16-mixed"
+  gradient_clip_val: 1.0
