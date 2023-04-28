@@ -1,7 +1,7 @@
 import glob
 import json
 from itertools import cycle
-from typing import Iterator
+from typing import Iterator, Iterable
 
 from loguru import logger
 from torch.utils.data import IterableDataset
@@ -42,7 +42,7 @@ class RedditDataset(IterableDataset):
         self.bos_token = self.context_tokenizer.bos_token
         self.eos_token = self.context_tokenizer.eos_token
 
-        self.files = glob.glob(file_glob)
+        self.files: Iterable[str] = glob.glob(file_glob)
         zero_rank_info(f"Using files: {', '.join(self.files)}")
 
         if infinite:
