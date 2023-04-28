@@ -18,6 +18,8 @@ class RedditDataset(IterableDataset):
         max_context_len: int,
         max_target_len: int = None,
         infinite: bool = False,
+        multiple_samples_from_threads: bool = True,
+        single_turn: bool = False,
     ):
         self._ws, self._rank = 1, 0
 
@@ -47,6 +49,12 @@ class RedditDataset(IterableDataset):
             zero_rank_info(f"Infinite mode is enabled, cycle files")
             self.files = cycle(self.files)
 
+        self.multiple_samples = multiple_samples_from_threads
+        self.single_turn = single_turn
+        zero_rank_info(
+            f"Generate multiple samples per thread: {self.multiple_samples}, use single turn context: {self.single_turn}"
+        )
+
     @property
     def vocab_size(self) -> int:
         return self.context_tokenizer.vocab_size
@@ -66,7 +74,20 @@ class RedditDataset(IterableDataset):
                 for line in f_in:
                     sample = json.loads(line)
                     utterances = [self.bos_token + it + self.eos_token for it in sample["thread"]]
+
+                    if not self.multiple_samples:  # yield only one sample per thread
+                        if self.single_turn:  # yield only 1 utterance per context (use 0th)
+                            yield utterances[0], utterances[1]
+                            continue
+                        # yield full thread
+                        yield " ".join(utterances[:-1]), utterances[-1]
+                        continue
+
                     for i in range(1, len(utterances)):
+                        if self.single_turn:  # yield previous utterance as context
+                            yield utterances[-1], utterances[i]
+
+                        # yield full previous thread
                         yield " ".join(utterances[:i]), utterances[i]
 
     def collate_fn(self, samples: list[tuple[str, str]]):

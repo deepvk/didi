@@ -15,7 +15,9 @@ def print_sample(batch, idx, tokenizer):
 
 
 def main(file_glob, tokenizer_name, seq_len, bs, skip, infinite):
-    dataset = RedditDataset(file_glob, tokenizer_name, seq_len, infinite=infinite)
+    dataset = RedditDataset(
+        file_glob, tokenizer_name, seq_len, infinite=infinite, multiple_samples_from_threads=False, single_turn=True
+    )
     did_dataset = DistributedIterableDataset(dataset)
     dataloader = DataLoader(did_dataset, batch_size=bs, collate_fn=dataset.collate_fn, num_workers=10)
     batch_iter = iter(dataloader)
