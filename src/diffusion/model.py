@@ -1,21 +1,15 @@
 import torch
-import wandb
 from lightning import LightningModule
-from lightning.pytorch.loggers import WandbLogger
 from torch import nn
 from transformers import AutoModel
 from transformers import BertConfig
 
 from src.diffusion.utils import configure_schedule, get_x0, scale_input, get_diffusion_variables, get_euler_variables
 from src.metrics import calculate_batch_ce
+from src.utils import zero_rank_info
 
 
-def get_components(
-    name: str,
-    mode: str,
-    num_hidden_layers: int = None,
-    intermediate_size: int = None,
-):
+def get_components(name: str, mode: str, **model_kwargs):
     model = AutoModel.from_pretrained(name)
     emb_dim = model.config.d_model
 
@@ -28,10 +22,10 @@ def get_components(
             is_decoder=True,
             hidden_size=emb_dim,
             num_attention_heads=model.config.num_attention_heads,
-            num_hidden_layers=num_hidden_layers,
-            intermediate_size=intermediate_size,
             add_cross_attention=True,
+            **model_kwargs,
         )
+        zero_rank_info(f"BERT config:\n{decoder_config}")
 
         decoder = AutoModel.from_config(decoder_config)
 
@@ -65,7 +59,7 @@ class DiDi(LightningModule):
         s_churn: float = 0.0,
         s_tmin: float = 0.0,
         s_tmax: float = float("+inf"),
-        batch_decoder=None
+        batch_decoder=None,
     ):
         super().__init__()
         self.save_hyperparameters()
