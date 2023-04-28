@@ -9,18 +9,22 @@ save_interval: 10_000
 dataset:
   max_context_len: 128
   max_target_len: 128
+  multiple_samples_from_threads: False
+  single_turn: True
 
 decoder:
   mode: "bert"
   num_hidden_layers: 6
   intermediate_size: 3072
+  hidden_dropout_prob: 0.2
+  attention_probs_dropout_prob: 0.1
 
 didi:
   diffusion_steps: 2000
   schedule: "sqrt"
   step_freq: 20
   optimizer: "AdamW"
-  lr: 1e-4
+  lr: 1e-3
   s_churn: 80
   s_tmin: 0.05
   s_tmax: 50
