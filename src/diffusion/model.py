@@ -11,17 +11,14 @@ from src.utils import zero_rank_info
 
 def get_components(name: str, mode: str, **model_kwargs):
     model = AutoModel.from_pretrained(name)
-    emb_dim = model.config.d_model
 
     if mode == "same":
-        return model.encoder, model.decoder, emb_dim
+        return model.encoder, model.decoder, model.config.d_model
 
     elif mode == "bert":
         decoder_config = BertConfig(
             vocab_size=model.config.vocab_size,
             is_decoder=True,
-            hidden_size=emb_dim,
-            num_attention_heads=model.config.num_attention_heads,
             add_cross_attention=True,
             **model_kwargs,
         )
@@ -29,7 +26,7 @@ def get_components(name: str, mode: str, **model_kwargs):
 
         decoder = AutoModel.from_config(decoder_config)
 
-        return model.encoder, decoder, emb_dim
+        return model.encoder, decoder, model_kwargs["hidden_size"]
 
 
 def freeze_params(model):
@@ -66,6 +63,8 @@ class DiDi(LightningModule):
         self.diffusion_steps = diffusion_steps
         self.pad_idx = pad_idx
         self.step_freq = step_freq
+        self.encoder_dim = encoder.config.d_model
+        self.decoder_dim = emb_dim
 
         self.emb = nn.Embedding(vocabulary_size, emb_dim, padding_idx=pad_idx)
         self.time_embeds = nn.Embedding(diffusion_steps + 1, emb_dim)
@@ -79,6 +78,12 @@ class DiDi(LightningModule):
 
         self.decoder = decoder
         self.classifier = nn.Linear(emb_dim, vocabulary_size)
+
+        self.adapter = nn.Sequential(
+            nn.Linear(self.encoder_dim, emb_dim),
+            nn.Tanh(),
+            nn.Linear(emb_dim, emb_dim)
+        )
 
         sigmas, std_0 = configure_schedule(diffusion_steps, schedule)
         self.register_buffer("sigmas", sigmas)
@@ -122,6 +127,9 @@ class DiDi(LightningModule):
                 context = self.encoder(
                     input_ids=encoder_input_ids, attention_mask=encoder_attention_mask
                 ).last_hidden_state
+
+                if self.encoder_dim != self.decoder_dim:
+                    context = self.adapter(context)
 
         time_embeds = self.time_embeds(time_ids)
         input_embeds = decoder_inputs_embeds + time_embeds
