@@ -79,11 +79,7 @@ class DiDi(LightningModule):
         self.decoder = decoder
         self.classifier = nn.Linear(emb_dim, vocabulary_size)
 
-        self.adapter = nn.Sequential(
-            nn.Linear(self.encoder_dim, emb_dim),
-            nn.Tanh(),
-            nn.Linear(emb_dim, emb_dim)
-        )
+        self.adapter = nn.Sequential(nn.Linear(self.encoder_dim, emb_dim), nn.Tanh(), nn.Linear(emb_dim, emb_dim))
 
         sigmas, std_0 = configure_schedule(diffusion_steps, schedule)
         self.register_buffer("sigmas", sigmas)
