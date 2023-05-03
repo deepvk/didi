@@ -26,7 +26,7 @@ def get_components(name: str, mode: str, **model_kwargs):
 
         decoder = AutoModel.from_config(decoder_config)
 
-        return model.encoder, decoder, model_kwargs["hidden_size"]
+        return model.encoder, decoder, decoder.config.d_model
 
 
 def freeze_params(model):
@@ -79,7 +79,8 @@ class DiDi(LightningModule):
         self.decoder = decoder
         self.classifier = nn.Linear(emb_dim, vocabulary_size)
 
-        self.adapter = nn.Sequential(nn.Linear(self.encoder_dim, emb_dim), nn.Tanh(), nn.Linear(emb_dim, emb_dim))
+        if self.encoder_dim != self.decoder_dim:
+            self.adapter = nn.Sequential(nn.Linear(self.encoder_dim, emb_dim), nn.Tanh(), nn.Linear(emb_dim, emb_dim))
 
         sigmas, std_0 = configure_schedule(diffusion_steps, schedule)
         self.register_buffer("sigmas", sigmas)
