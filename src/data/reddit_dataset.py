@@ -3,7 +3,6 @@ import json
 from itertools import cycle
 from typing import Iterator, Iterable
 
-from loguru import logger
 from torch.utils.data import IterableDataset
 from transformers import AutoTokenizer, PreTrainedTokenizer
 
@@ -21,8 +20,6 @@ class RedditDataset(IterableDataset):
         multiple_samples_from_threads: bool = True,
         single_turn: bool = False,
     ):
-        self._ws, self._rank = 1, 0
-
         self.context_tokenizer: PreTrainedTokenizer = AutoTokenizer.from_pretrained(
             tokenizer_name, truncation_side="left"
         )
@@ -62,11 +59,6 @@ class RedditDataset(IterableDataset):
     @property
     def pad_idx(self) -> int:
         return self.context_tokenizer.pad_token_id
-
-    def _log(self, msg: str):
-        if self._ws > 1:
-            msg = f"[Dataset {self._rank + 1}/{self._ws}] " + msg
-        logger.info(msg)
 
     def __iter__(self) -> Iterator[tuple[str, str]]:
         for file in self.files:
