@@ -1,5 +1,8 @@
+from functools import partial
+
 import torch
 from lightning import LightningModule
+from math import sqrt
 from torch import nn
 from transformers import AutoModel
 from transformers import BertConfig
@@ -50,16 +53,16 @@ class DiDi(LightningModule):
         schedule: str,
         step_freq: int,
         pad_idx: int,
-        optimizer: str = "AdamW",
         lr: float = 0.0001,
-        momentum: float = 0.95,
+        warmup_steps: int = 0,
+        min_lr: float = None,
         s_churn: float = 0.0,
         s_tmin: float = 0.0,
         s_tmax: float = float("+inf"),
         batch_decoder=None,
     ):
         super().__init__()
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=[encoder, decoder])
         self.diffusion_steps = diffusion_steps
         self.pad_idx = pad_idx
         self.step_freq = step_freq
@@ -86,22 +89,20 @@ class DiDi(LightningModule):
         self.register_buffer("sigmas", sigmas)
         self.register_buffer("std_0", std_0)
 
-        self.optimizer = optimizer
-        self.lr = lr
-        self.momentum = momentum
+        self.lr, self.warmup, self.min_lr = lr, warmup_steps, min_lr
 
         self.val_ce: list[float] = []
         self.val_acc: list[float] = []
         self.batch_decoder = batch_decoder
 
     def configure_optimizers(self):
-        if self.optimizer == "AdamW":
-            optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
-        elif self.optimizer == "SGD":
-            optimizer = torch.optim.SGD(self.parameters(), lr=self.lr, momentum=self.momentum)
-        else:
-            raise NotImplementedError("Unsupported optimizer")
-        return optimizer
+        optimizer = torch.optim.AdamW(self.parameters(), lr=1.0)  # Fully control LR from scheduler
+        scheduler_lambda = partial(rsqrt_with_warmup, max_lr=self.lr, min_lr=self.min_lr, warmup=self.warmup)
+        lr_scheduler_config = {
+            "scheduler": torch.optim.lr_scheduler.LambdaLR(optimizer, scheduler_lambda),
+            "interval": "step",
+        }
+        return [optimizer], [lr_scheduler_config]
 
     def train(self, mode: bool = True):
         super().train(mode)
@@ -230,3 +231,31 @@ class DiDi(LightningModule):
         self.log_dict(metrics, sync_dist=True, on_step=False, on_epoch=True)
         self.val_ce.clear()
         self.val_acc.clear()
+
+
+def rsqrt_with_warmup(step: int, max_lr: float, min_lr: float, warmup: int) -> float:
+    """Scheduler for learning rate with a form of reverse sqrt (known as Noam favorite scheduler):
+        `lr_t = max_lr * sqrt(1 / t)`
+
+    Warm-up increases learning rate from 0 with square root form and then smoothly decay with reverse square root.
+        `lr_t = max_lr * sqrt(t / warmup)` if t <= warmup
+        `lr_t = max_lr * sqrt(warmup / t)` if t > warmup
+
+    Also, there is control of minimum learning rate
+
+    :param step: current step
+    :param max_lr: maximum learning rate
+    :param min_lr: minimum learning rate
+    :param warmup: number of warmup steps
+    :return: next learning rate
+    """
+    if warmup == 0:
+        lr = max_lr * sqrt(1 / step)
+    elif step < warmup:
+        lr = max_lr * sqrt(step / warmup)
+    else:
+        lr = max_lr * sqrt(warmup / step)
+
+    if min_lr is not None:
+        lr = max(lr, min_lr)
+    return lr
