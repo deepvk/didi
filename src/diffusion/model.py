@@ -4,7 +4,8 @@ from torch import nn
 from transformers import AutoModel
 from transformers import BertConfig
 
-from src.diffusion.utils import configure_schedule, get_x0, scale_input, get_diffusion_variables, get_euler_variables
+from src.diffusion.utils import configure_schedule, get_x0, get_diffusion_variables
+from src.sampling import sample
 from src.metrics import calculate_batch_ce
 from src.utils import zero_rank_info
 
@@ -168,85 +169,11 @@ class DiDi(LightningModule):
         self.log_dict(metrics, sync_dist=True, on_step=True, on_epoch=False)
         return loss
 
-    def sample_ddpm(self, x_t, raw_context, cached_context, noise, ones):
-        diffusion_steps = self.diffusion_steps
-        timesteps = range(diffusion_steps, 1, -self.step_freq)
-
-        for t in timesteps:
-            x_0, cached_context = self(
-                encoder_input_ids=raw_context.input_ids,
-                encoder_attention_mask=raw_context.attention_mask,
-                decoder_inputs_embeds=x_t,
-                time_ids=t * ones,
-                context=cached_context,
-            )
-
-            sigma_t = self.sigmas[max(t - self.step_freq, 1)]
-            noise.normal_(0, 1)
-            x_t = scale_input(x_0 + sigma_t * noise, sigma_t)
-
-        x_0, _ = self(
-            encoder_attention_mask=raw_context.attention_mask,
-            decoder_inputs_embeds=x_t,
-            time_ids=ones,
-            context=cached_context,
-        )
-
-        logits = self.classifier(x_0)
-        return logits
-
-    def sample_euler(self, x_t, raw_context, cached_context, noise, ones):
-        diffusion_steps = self.diffusion_steps
-        timesteps = range(diffusion_steps, 1, -self.step_freq)
-        num_sigmas = len(timesteps)
-
-        for t in timesteps:
-            noise.normal_(0, 1)
-            x_t, cached_context = self.euler_step(
-                x_t, self.sigmas[t], raw_context, cached_context, t, max(t - self.step_freq, 1), num_sigmas, ones, noise
-            )
-
-        noise.normal_(0, 1)
-        x_0, _ = self.euler_step(x_t, self.sigmas[1], raw_context, cached_context, 1, 0, num_sigmas, ones, noise)
-
-        logits = self.classifier(x_0)
-        return logits
-
-    def euler_step(self, x_t, sigma_t, raw_context, cached_context, t, next_t, num_sigmas, ones, noise):
-        x_t = scale_input(x_t, sigma_t)
-
-        x_0, cached_context = self(
-            encoder_input_ids=raw_context.input_ids,
-            encoder_attention_mask=raw_context.attention_mask,
-            decoder_inputs_embeds=x_t,
-            time_ids=t * ones,
-            context=cached_context,
-        )
-
-        x_t, sigma_hat = get_euler_variables(x_t, noise, sigma_t, self.s_churn, self.s_tmin, self.s_tmax, num_sigmas)
-
-        d = (x_t - x_0) / sigma_t
-        dt = self.sigmas[next_t] - sigma_hat
-        x_t = x_t + d * dt
-        return x_t, cached_context
-
     def validation_step(self, batch: list, batch_idx: int):
         raw_context, target = batch
-        emb = self.emb(target.input_ids)
-        x_t = torch.randn_like(emb) * self.sigmas[-1]
-
-        cached_context = None
-        ones = torch.ones((emb.shape[0], 1), dtype=torch.long, device=emb.device)
-        noise = torch.empty_like(emb)
-
-        if self.sampling_mode == "ddpm":
-            logits = self.sample_ddpm(x_t, raw_context, cached_context, noise, ones)
-        elif self.sampling_mode == "euler":
-            logits = self.sample_euler(x_t, raw_context, cached_context, noise, ones)
-        else:
-            raise NotImplementedError(f"No {self.sampling_mode} sampling strategy")
-
+        logits = sample(raw_context, self, self.sampling_mode, self.step_freq, raw_output=True)
         predictions = logits.argmax(-1)
+
         self.val_ce.append(calculate_batch_ce(logits, target.input_ids, target.attention_mask).item())
         self.val_acc.append(
             (((predictions == target.input_ids) * target.attention_mask).sum() / target.attention_mask.sum()).item()
