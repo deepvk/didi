@@ -4,7 +4,7 @@ import torch.cuda
 from omegaconf import OmegaConf
 from transformers import AutoTokenizer
 
-from src.sampling import get_pretrained_model
+from src.diffusion.model import DiDi
 from src.sampling import sample
 
 
@@ -27,14 +27,13 @@ def main(config_path: str, model_path: str, mode: str):
     }
 
     context_tokenizer = AutoTokenizer.from_pretrained(config.base_name, truncation_side="left")
-
     bos = context_tokenizer.bos_token
     eos = context_tokenizer.eos_token
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    model = get_pretrained_model(model_path, config, context_tokenizer)
-    model = model.to(device)
+    model = DiDi.load_from_checkpoint(model_path).to(device)
+    model.eval()
 
     context = f"{bos} "
 
@@ -42,7 +41,7 @@ def main(config_path: str, model_path: str, mode: str):
         try:
             context += f"{input('You: ')}{eos}"
             raw_context = context_tokenizer(context, **tokenizer_kwargs).to(device)
-            reply = sample(raw_context, model, context_tokenizer, mode, config.didi.step_freq, device)[0]
+            reply = sample(raw_context, model, mode, config.didi.step_freq, context_tokenizer)[0]
             context += f"{eos} {bos} {reply}{eos} {bos}"
             print("DiDi:", reply)
         except KeyboardInterrupt:

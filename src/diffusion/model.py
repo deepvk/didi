@@ -7,7 +7,8 @@ from torch import nn
 from transformers import AutoModel
 from transformers import BertConfig
 
-from src.diffusion.utils import configure_schedule, get_x0, scale_input, get_diffusion_variables, get_euler_variables
+from src.diffusion.utils import configure_schedule, get_x0, get_diffusion_variables
+from src.sampling import sample
 from src.metrics import calculate_batch_ce
 from src.utils import zero_rank_info
 
@@ -56,6 +57,7 @@ class DiDi(LightningModule):
         lr: float = 0.0001,
         warmup_steps: int = 0,
         min_lr: float = None,
+        sampling_mode: str = "ddpm",
         s_churn: float = 0.0,
         s_tmin: float = 0.0,
         s_tmax: float = float("+inf"),
@@ -72,6 +74,7 @@ class DiDi(LightningModule):
         self.emb = nn.Embedding(vocabulary_size, emb_dim, padding_idx=pad_idx)
         self.time_embeds = nn.Embedding(diffusion_steps + 1, emb_dim)
 
+        self.sampling_mode = sampling_mode
         self.s_churn = s_churn
         self.s_tmin = s_tmin
         self.s_tmax = s_tmax
@@ -172,45 +175,9 @@ class DiDi(LightningModule):
         self.log_dict(metrics, sync_dist=True, on_step=True, on_epoch=False)
         return loss
 
-    def euler_step(self, x_t, sigma_t, raw_context, cached_context, t, next_t, num_sigmas, ones, noise):
-        x_t = scale_input(x_t, sigma_t)
-
-        x_0, cached_context = self(
-            encoder_input_ids=raw_context.input_ids,
-            encoder_attention_mask=raw_context.attention_mask,
-            decoder_inputs_embeds=x_t,
-            time_ids=t * ones,
-            context=cached_context,
-        )
-
-        x_t, sigma_hat = get_euler_variables(x_t, noise, sigma_t, self.s_churn, self.s_tmin, self.s_tmax, num_sigmas)
-
-        d = (x_t - x_0) / sigma_t
-        dt = self.sigmas[next_t] - sigma_hat
-        x_t = x_t + d * dt
-        return x_t, cached_context
-
     def validation_step(self, batch: list, batch_idx: int):
         raw_context, target = batch
-        emb = self.emb(target.input_ids)
-        x_t = torch.randn_like(emb) * self.sigmas[-1]
-
-        cached_context = None
-        ones = torch.ones((emb.shape[0], 1), dtype=torch.long, device=emb.device)
-        noise = torch.empty_like(emb)
-
-        num_sigmas = len(range(self.diffusion_steps, 1, -self.step_freq))
-
-        for t in range(self.diffusion_steps, 1, -self.step_freq):
-            noise.normal_(0, 1)
-            x_t, cached_context = self.euler_step(
-                x_t, self.sigmas[t], raw_context, cached_context, t, max(t - self.step_freq, 1), num_sigmas, ones, noise
-            )
-
-        noise.normal_(0, 1)
-        x_0, _ = self.euler_step(x_t, self.sigmas[1], raw_context, cached_context, 1, 0, num_sigmas, ones, noise)
-
-        logits = self.classifier(x_0)
+        logits = sample(raw_context, self, self.sampling_mode, self.step_freq, raw_output=True)
         predictions = logits.argmax(-1)
 
         self.val_ce.append(calculate_batch_ce(logits, target.input_ids, target.attention_mask).item())
