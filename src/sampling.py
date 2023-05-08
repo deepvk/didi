@@ -14,9 +14,9 @@ def sample(raw_context, model, mode, step_freq, tokenizer=None, raw_output=False
     noise = torch.empty_like(emb)
 
     if mode == "ddpm":
-        logits = model.sample_ddpm(model, x_t, raw_context, cached_context, noise, ones, step_freq)
+        logits = sample_ddpm(model, x_t, raw_context, cached_context, noise, ones, step_freq)
     elif mode == "euler":
-        logits = model.sample_euler(model, x_t, raw_context, cached_context, noise, ones, step_freq)
+        logits = sample_euler(model, x_t, raw_context, cached_context, noise, ones, step_freq)
     else:
         raise NotImplementedError(f"No {mode} sampling strategy")
 
