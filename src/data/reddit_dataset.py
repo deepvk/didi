@@ -27,7 +27,7 @@ class RedditDataset(IterableDataset):
             tokenizer_name, truncation_side="right"
         )
         self.tokenizer_kwargs = {
-            "padding": True,
+            "padding": "max_length",
             "truncation": True,
             "return_tensors": "pt",
             "add_special_tokens": False,
