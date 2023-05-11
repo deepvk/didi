@@ -3,7 +3,7 @@ from os.path import join
 from lightning import seed_everything, Trainer
 from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 from lightning.pytorch.loggers import WandbLogger
-from lightning.pytorch.strategies import DDPStrategy
+from lightning.pytorch.strategies import DeepSpeedStrategy
 
 
 def train_model(
@@ -30,12 +30,11 @@ def train_model(
         every_n_train_steps=save_interval if save_interval > 0 else train_parameters["max_steps"],
         save_top_k=-1,
         auto_insert_metric_name=False,
-        save_on_train_epoch_end=True,
     )
 
     lr_logger = LearningRateMonitor("step")
 
-    strategy = DDPStrategy(find_unused_parameters=False, static_graph=True, gradient_as_bucket_view=True)
+    strategy = DeepSpeedStrategy(stage=2, allgather_bucket_size=int(5e8), reduce_bucket_size=int(5e8))
     trainer = Trainer(
         accelerator="gpu",
         strategy=strategy,
