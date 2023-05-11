@@ -30,7 +30,7 @@ def get_components(name: str, mode: str, **model_kwargs):
 
         decoder = AutoModel.from_config(decoder_config)
 
-        return model.encoder, decoder, decoder.config.d_model
+        return model.encoder, decoder, decoder_config.hidden_size
 
 
 def freeze_params(model):
