@@ -216,10 +216,11 @@ def rsqrt_with_warmup(step: int, max_lr: float, min_lr: float, warmup: int) -> f
     :param warmup: number of warmup steps
     :return: next learning rate
     """
+    if warmup != 0 and step < warmup:
+        return max_lr * sqrt(step / warmup)
+
     if warmup == 0:
         lr = max_lr * sqrt(1 / step)
-    elif step < warmup:
-        lr = max_lr * sqrt(step / warmup)
     else:
         lr = max_lr * sqrt(warmup / step)
 
