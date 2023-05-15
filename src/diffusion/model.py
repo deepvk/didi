@@ -177,7 +177,8 @@ class DiDi(LightningModule):
 
     def validation_step(self, batch: list, batch_idx: int):
         raw_context, target = batch
-        logits = sample(raw_context, self, self.sampling_mode, self.step_freq, raw_output=True)
+        max_trg_len = target.input_ids.shape[1]
+        logits = sample(raw_context, self, self.sampling_mode, self.step_freq, max_len=max_trg_len, raw_output=True)
         predictions = logits.argmax(-1)
 
         self.val_ce.append(calculate_batch_ce(logits, target.input_ids, target.attention_mask).item())
