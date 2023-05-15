@@ -3,15 +3,15 @@ from src.diffusion.utils import scale_input, get_euler_variables
 
 
 @torch.no_grad()
-def sample(raw_context, model, mode, step_freq, tokenizer=None, raw_output=False):
+def sample(raw_context, model, mode, step_freq, max_len=-1, tokenizer=None, raw_output=False):
     input_ids = raw_context.input_ids
     emb = model.emb(input_ids)
 
-    x_t = torch.randn_like(emb) * model.sigmas[-1]
+    x_t = torch.randn_like(emb[:, :max_len]) * model.sigmas[-1]
 
     cached_context = None
     ones = torch.ones((emb.shape[0], 1), dtype=torch.long, device=emb.device)
-    noise = torch.empty_like(emb)
+    noise = torch.empty_like(emb[:, :max_len])
 
     if mode == "ddpm":
         logits = sample_ddpm(model, x_t, raw_context, cached_context, noise, ones, step_freq)
@@ -67,8 +67,8 @@ def sample_euler(model, x_t, raw_context, cached_context, noise, ones, step_freq
 
     for t in timesteps:
         noise.normal_(0, 1)
-        x_t, cached_context = model.euler_step(
-            x_t, model.sigmas[t], raw_context, cached_context, t, max(t - step_freq, 1), num_sigmas, ones, noise
+        x_t, cached_context = euler_step(
+            model, x_t, model.sigmas[t], raw_context, cached_context, t, max(t - step_freq, 1), num_sigmas, ones, noise
         )
 
     noise.normal_(0, 1)
