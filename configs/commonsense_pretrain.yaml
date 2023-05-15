@@ -1,5 +1,4 @@
 seed: 0xBADB01
-#base_name: "facebook/blenderbot-3B"
 base_name: "facebook/blenderbot-400M-distill"
 
 batch_size: 256
@@ -9,8 +8,6 @@ save_interval: 10_000
 dataset:
   max_context_len: 64
   max_target_len: 64
-  multiple_samples_from_threads: False
-  single_turn: True
 
 decoder:
   mode: "bert"
@@ -35,5 +32,3 @@ trainer:
   devices: 8
   max_steps: 150_000
   val_check_interval: 10_000
-#  gradient_clip_val: 1.0
-#  accumulate_grad_batches: 2

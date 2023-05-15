@@ -4,6 +4,7 @@ from loguru import logger
 from torch.utils.data import DataLoader
 from tqdm import trange
 
+from src.data.commonsense_dataset import CommonSenseDataset
 from src.data.distributed_dataset import DistributedIterableDataset
 from src.data.reddit_dataset import RedditDataset
 
@@ -14,10 +15,14 @@ def print_sample(batch, idx, tokenizer):
     print(tokenizer.decode(batch.input_ids[idx]))
 
 
-def main(file_glob, tokenizer_name, seq_len, bs, skip, infinite):
-    dataset = RedditDataset(
-        file_glob, tokenizer_name, seq_len, infinite=infinite, multiple_samples_from_threads=False, single_turn=True
-    )
+def main(file_glob, tokenizer_name, seq_len, bs, skip, infinite, commonsense):
+    if commonsense:
+        dataset = CommonSenseDataset(file_glob, tokenizer_name, seq_len)
+    else:
+        dataset = RedditDataset(
+            file_glob, tokenizer_name, seq_len, infinite=infinite, multiple_samples_from_threads=False, single_turn=True
+        )
+
     did_dataset = DistributedIterableDataset(dataset)
     dataloader = DataLoader(did_dataset, batch_size=bs, collate_fn=dataset.collate_fn, num_workers=10)
     batch_iter = iter(dataloader)
@@ -42,4 +47,5 @@ if __name__ == "__main__":
     arg_parser.add_argument("--bs", type=int, default=3, help="Batch size")
     arg_parser.add_argument("--skip", type=int, default=0, help="Number of batches to skip")
     arg_parser.add_argument("--infinite", action="store_true", help="If passed, enable infinite mode for dataset")
+    arg_parser.add_argument("--commonsense", action="store_true", help="Whether to use Reddit or CommonSense dataset.")
     main(**vars(arg_parser.parse_args()))

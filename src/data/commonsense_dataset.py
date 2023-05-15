@@ -7,7 +7,7 @@ from transformers import AutoTokenizer, PreTrainedTokenizer
 from src.utils import zero_rank_info
 
 
-class CommonsenceDataset(IterableDataset):
+class CommonSenseDataset(IterableDataset):
     def __init__(
         self,
         file: str,
