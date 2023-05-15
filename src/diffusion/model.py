@@ -220,7 +220,6 @@ def rsqrt_with_warmup(step: int, max_lr: float, min_lr: float, warmup: int) -> f
     if warmup != 0 and step < warmup:
         return max_lr * sqrt(step / warmup)
 
-    step += 1
     if warmup == 0:
         lr = max_lr * sqrt(1 / step)
     else:
