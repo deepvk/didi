@@ -3,7 +3,7 @@ from src.diffusion.utils import scale_input, get_euler_variables
 
 
 @torch.no_grad()
-def sample(raw_context, model, mode, step_freq, max_len=-1, tokenizer=None, raw_output=False):
+def sample(raw_context, model, mode, step_freq, tokenizer=None, max_len=-1, raw_output=False):
     input_ids = raw_context.input_ids
     emb = model.emb(input_ids)[:, :max_len]
 
