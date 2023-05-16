@@ -37,8 +37,12 @@ def main(config_path: str, dataset_dir: str, ckpt_dir: str = None, resume: str =
     zero_rank_info(f"Loaded config:\n{OmegaConf.to_yaml(config, resolve=False, sort_keys=True)}")
 
     if commonsense:
-        train_dataset = CommonSenseDataset(join(dataset_dir, "train.jsonl"), config.base_name, **config.dataset)
-        val_dataset = CommonSenseDataset(join(dataset_dir, "valid.jsonl"), config.base_name, **config.dataset)
+        train_dataset = CommonSenseDataset(
+            join(dataset_dir, "train.jsonl"), config.base_name, infinite=True, **config.dataset
+        )
+        val_dataset = CommonSenseDataset(
+            join(dataset_dir, "valid.jsonl"), config.base_name, infinite=False, **config.dataset
+        )
     else:
         train_files_glob = join(dataset_dir, "train", "train.jsonl-*")
         train_dataset = RedditDataset(train_files_glob, config.base_name, infinite=True, **config.dataset)

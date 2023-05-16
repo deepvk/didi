@@ -13,6 +13,7 @@ class CommonSenseDataset(IterableDataset):
         file: str,
         tokenizer_name: str,
         max_context_len: int,
+        infinite: bool = False,
         max_target_len: int = None,
     ):
         self.context_tokenizer: PreTrainedTokenizer = AutoTokenizer.from_pretrained(
@@ -35,7 +36,8 @@ class CommonSenseDataset(IterableDataset):
         self.eos_token = self.context_tokenizer.eos_token
 
         self.file = file
-        zero_rank_info(f"Using file: {self.file}")
+        self.infinite = infinite
+        zero_rank_info(f"Using file: {self.file}, infinite mode: {self.infinite}")
 
     @property
     def vocab_size(self) -> int:
@@ -46,11 +48,14 @@ class CommonSenseDataset(IterableDataset):
         return self.context_tokenizer.pad_token_id
 
     def __iter__(self) -> Iterator[tuple[str, str]]:
-        with open(self.file, "rt") as f_in:
-            for line in f_in:
-                sample = json.loads(line)
-                utterances = [self.bos_token + sample[prp] + self.eos_token for prp in ["src", "trg"]]
-                yield utterances[0], utterances[1]
+        while True:
+            with open(self.file, "rt") as f_in:
+                for line in f_in:
+                    sample = json.loads(line)
+                    utterances = [self.bos_token + sample[prp] + self.eos_token for prp in ["src", "trg"]]
+                    yield utterances[0], utterances[1]
+            if not self.infinite:
+                break
 
     def collate_fn(self, samples: list[tuple[str, str]]):
         str_contexts, str_replies = zip(*samples)
