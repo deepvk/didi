@@ -7,7 +7,7 @@ from torch import nn
 from transformers import AutoModel
 from transformers import BertConfig
 
-from src.diffusion.utils import configure_schedule, get_x0, get_diffusion_variables
+from src.diffusion.utils import configure_schedule, get_x0, get_diffusion_variables, scale_input
 from src.sampling import sample
 from src.metrics import calculate_batch_ce
 from src.utils import zero_rank_info
@@ -168,10 +168,17 @@ class DiDi(LightningModule):
             flat_mean((x_0_hat - x_0) ** 2 * non_pad_mask),
         ).mean()
 
-        t0_loss = (x_0**2 * non_pad_mask).mean()
-        loss = mse + ce + t0_loss
+        noise, sigma_T = torch.randn_like(x_0), self.sigmas[-1]
+        x_T = scale_input(x_0 + sigma_T * noise, sigma_T)
+        t_T_loss = (x_T**2 * non_pad_mask).mean()
 
-        metrics = {"train/mse": mse, "train/ce": ce, "train/t0": t0_loss, "train/loss": loss}
+        loss = mse + ce + t_T_loss
+
+        with torch.no_grad():
+            logits_hat = self.classifier(x_0_hat)
+            ce_hat = calculate_batch_ce(logits_hat, target.input_ids, target.attention_mask)
+
+        metrics = {"train/mse": mse, "train/ce": ce, "train/t_T": t_T_loss, "train/loss": loss, "train/ce_hat": ce_hat}
         self.log_dict(metrics, sync_dist=True, on_step=True, on_epoch=False)
         return loss
 
