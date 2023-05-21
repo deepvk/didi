@@ -3,7 +3,7 @@ from src.diffusion.utils import scale_input, get_euler_variables
 
 
 @torch.no_grad()
-def sample(raw_context, model, mode, step_freq, tokenizer=None, max_len=-1, raw_output=False):
+def sample(raw_context, model, mode, step_freq, tokenizer=None, max_len=-1, raw_output=False, skip_special=True):
     input_ids = raw_context.input_ids
     emb = model.emb(input_ids)[:, :max_len]
 
@@ -28,7 +28,7 @@ def sample(raw_context, model, mode, step_freq, tokenizer=None, max_len=-1, raw_
 
     predictions = logits.argmax(-1)
     eos_id = tokenizer.eos_token_id
-    replies = tokenizer.batch_decode(truncate_predictions(predictions, eos_id), skip_special_tokens=True)
+    replies = tokenizer.batch_decode(truncate_predictions(predictions, eos_id), skip_special_tokens=skip_special)
     return select_reply(replies)
 
 

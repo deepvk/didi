@@ -64,3 +64,9 @@ class CommonSenseDataset(IterableDataset):
         # [batch size; target seq len]
         replies = self.reply_tokenizer(str_replies, max_length=self.max_target_len, **self.tokenizer_kwargs)
         return contexts, replies
+
+    def test_collate_fn(self, samples: list[tuple[str, str]]):
+        str_contexts, str_replies = zip(*samples)
+        # [batch size; context seq len]
+        contexts = self.context_tokenizer(str_contexts, max_length=self.max_context_len, **self.tokenizer_kwargs)
+        return contexts, str_contexts, str_replies
