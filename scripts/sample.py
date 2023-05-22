@@ -1,9 +1,14 @@
 import argparse
+import json
+from os.path import join
 
 import torch.cuda
 from omegaconf import OmegaConf
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 from transformers import AutoTokenizer
 
+from src.data.commonsense_dataset import CommonSenseDataset
 from src.diffusion.model import DiDi
 from src.sampling import sample
 
@@ -12,11 +17,15 @@ def configure_arg_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("config_path", type=str, help="Path to YAML config file")
     parser.add_argument("model_path", type=str, help="Path to trained model file")
-    parser.add_argument("mode", type=str, nargs="?", default="ddpm", help="Sampling mode")
+    parser.add_argument("-m", "--mode", type=str, default="ddpm", help="Sampling mode")
+    parser.add_argument("-f", "--freq", type=int, default=1, help="Sampling step frequency")
+    parser.add_argument("-i", "--dataset_dir", type=str, help="Input file for generation")
+    parser.add_argument("-o", "--output_dir", type=str, help="Output directory for sampling result")
+    parser.add_argument("-n", "--num_repeats", type=int, default=1, help="Number of sampling repeats for MBR decoding")
     return parser
 
 
-def main(config_path: str, model_path: str, mode: str):
+def main(config_path: str, model_path: str, mode: str, freq: int, dataset_dir: str, output_dir: str, num_repeats: int):
     config = OmegaConf.load(config_path)
 
     tokenizer_kwargs = {
@@ -35,18 +44,42 @@ def main(config_path: str, model_path: str, mode: str):
     model = DiDi.load_from_checkpoint(model_path).to(device)
     model.eval()
 
-    context = f"{bos} "
+    if dataset_dir is None:
+        context = f"{bos} "
+        while True:
+            try:
+                context += f"{input('You: ')}{eos}"
+                raw_context = context_tokenizer(context, **tokenizer_kwargs).to(device)
+                reply = sample(raw_context, model, mode, freq, context_tokenizer)[0]
+                context += f"{eos} {bos} {reply}{eos} {bos}"
+                print("DiDi:", reply)
+            except KeyboardInterrupt:
+                print("\nDiDi: Get back soon!")
+                break
+    else:
+        test_files_glob = join(dataset_dir, "test.jsonl")
+        test_dataset = CommonSenseDataset(test_files_glob, config.base_name, **config.dataset)
+        test_dataloader = DataLoader(
+            test_dataset,
+            batch_size=config.val_batch_size,
+            collate_fn=test_dataset.test_collate_fn,
+            pin_memory=True,
+            num_workers=1,
+        )
 
-    while True:
-        try:
-            context += f"{input('You: ')}{eos}"
-            raw_context = context_tokenizer(context, **tokenizer_kwargs).to(device)
-            reply = sample(raw_context, model, mode, config.didi.step_freq, context_tokenizer)[0]
-            context += f"{eos} {bos} {reply}{eos} {bos}"
-            print("DiDi:", reply)
-        except KeyboardInterrupt:
-            print("\nDiDi: Get back soon!")
-            break
+        for seed in range(num_repeats):
+            torch.manual_seed(seed)
+
+            with open(join(output_dir, f"seed{seed}_{mode}_freq{freq}.json"), "a") as f:
+                for batch in tqdm(test_dataloader):
+                    raw_context, context, target = batch
+                    raw_context = raw_context.to(device)
+                    predictions = sample(
+                        raw_context, model, mode, freq, test_dataset.reply_tokenizer, skip_special=False
+                    )
+
+                    for recov, ref, src in zip(predictions, target, context):
+                        print(json.dumps({"recover": recov, "reference": ref, "source": src}), file=f)
 
 
 if __name__ == "__main__":
