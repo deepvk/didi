@@ -3,6 +3,7 @@ import json
 from os.path import join
 
 import torch.cuda
+from lightning import seed_everything
 from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -17,15 +18,25 @@ def configure_arg_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("config_path", type=str, help="Path to YAML config file")
     parser.add_argument("model_path", type=str, help="Path to trained model file")
+    parser.add_argument("seeds", nargs="*", type=int, help="Random seeds")
     parser.add_argument("-m", "--mode", type=str, default="ddpm", help="Sampling mode")
     parser.add_argument("-f", "--freq", type=int, default=1, help="Sampling step frequency")
     parser.add_argument("-i", "--dataset_dir", type=str, help="Input file for generation")
     parser.add_argument("-o", "--output_dir", type=str, help="Output directory for sampling result")
-    parser.add_argument("-n", "--num_repeats", type=int, default=1, help="Number of sampling repeats for MBR decoding")
+    parser.add_argument("-d", "--device_id", type=int, default=0, help="GPU device id")
     return parser
 
 
-def main(config_path: str, model_path: str, mode: str, freq: int, dataset_dir: str, output_dir: str, num_repeats: int):
+def main(
+    config_path: str,
+    model_path: str,
+    seeds: list[int],
+    mode: str,
+    freq: int,
+    dataset_dir: str,
+    output_dir: str,
+    device_id: int,
+):
     config = OmegaConf.load(config_path)
 
     tokenizer_kwargs = {
@@ -39,7 +50,7 @@ def main(config_path: str, model_path: str, mode: str, freq: int, dataset_dir: s
     bos = context_tokenizer.bos_token
     eos = context_tokenizer.eos_token
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = f"cuda:{device_id}" if torch.cuda.is_available() else "cpu"
 
     model = DiDi.load_from_checkpoint(model_path).to(device)
     model.eval()
@@ -67,10 +78,10 @@ def main(config_path: str, model_path: str, mode: str, freq: int, dataset_dir: s
             num_workers=1,
         )
 
-        for seed in range(num_repeats):
-            torch.manual_seed(seed)
+        for seed in seeds:
+            seed_everything(seed)
 
-            with open(join(output_dir, f"seed{seed}_{mode}_freq{freq}.json"), "a") as f:
+            with open(join(output_dir, f"seed{seed}_{mode}_freq{freq}.json"), "w") as f:
                 for batch in tqdm(test_dataloader):
                     raw_context, context, target = batch
                     raw_context = raw_context.to(device)
