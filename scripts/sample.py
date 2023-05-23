@@ -3,6 +3,7 @@ import json
 from os.path import join
 
 import torch.cuda
+from lightning import seed_everything
 from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -78,9 +79,9 @@ def main(
         )
 
         for seed in seeds:
-            torch.manual_seed(seed)
+            seed_everything(seed)
 
-            with open(join(output_dir, f"seed{seed}_{mode}_freq{freq}.json"), "a") as f:
+            with open(join(output_dir, f"seed{seed}_{mode}_freq{freq}.json"), "w") as f:
                 for batch in tqdm(test_dataloader):
                     raw_context, context, target = batch
                     raw_context = raw_context.to(device)
