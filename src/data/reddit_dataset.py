@@ -20,6 +20,7 @@ class RedditDataset(IterableDataset):
         multiple_samples_from_threads: bool = True,
         single_turn: bool = False,
     ):
+        self.tokenizer_name = tokenizer_name
         self.context_tokenizer: PreTrainedTokenizer = AutoTokenizer.from_pretrained(
             tokenizer_name, truncation_side="left"
         )
@@ -38,6 +39,7 @@ class RedditDataset(IterableDataset):
 
         self.bos_token = self.context_tokenizer.bos_token
         self.eos_token = self.context_tokenizer.eos_token
+        self.sep = " " if tokenizer_name.startswith("t5") else f"{self.eos_token} "
 
         self.files: Iterable[str] = glob.glob(file_glob)
         zero_rank_info(f"Using files: {', '.join(self.files)}")
@@ -65,22 +67,22 @@ class RedditDataset(IterableDataset):
             with open(file, "rt") as f_in:
                 for line in f_in:
                     sample = json.loads(line)
-                    utterances = [self.bos_token + it + self.eos_token for it in sample["thread"]]
+                    utterances = [self.bos_token + it for it in sample["thread"]]
 
                     if not self.multiple_samples:  # yield only one sample per thread
                         if self.single_turn:  # yield only 1 utterance per context (use 0th)
-                            yield utterances[0], utterances[1]
+                            yield utterances[0] + self.eos_token, utterances[1] + self.eos_token
                             continue
                         # yield full thread
-                        yield " ".join(utterances[:-1]), utterances[-1]
+                        yield self.sep.join(utterances[:-1]) + self.eos_token, utterances[-1] + self.eos_token
                         continue
 
                     for i in range(1, len(utterances)):
                         if self.single_turn:  # yield previous utterance as context
-                            yield utterances[-1], utterances[i]
+                            yield utterances[-1] + self.eos_token, utterances[i] + self.eos_token
 
                         # yield full previous thread
-                        yield " ".join(utterances[:i]), utterances[i]
+                        yield self.sep.join(utterances[:i]) + self.eos_token, utterances[i] + self.eos_token
 
     def collate_fn(self, samples: list[tuple[str, str]]):
         str_contexts, str_replies = zip(*samples)
