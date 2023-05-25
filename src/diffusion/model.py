@@ -15,28 +15,25 @@ from src.utils import zero_rank_info
 
 
 def get_components(name: str, mode: str, **model_kwargs):
-    if mode == "same":
-        model = AutoModel.from_pretrained(name)
-        return model.encoder, model.decoder, model.config.d_model
+    if mode == "blenderbot":
+        encoder = AutoModel.from_pretrained(name).encoder
+    elif mode == "t5":
+        T5EncoderModel._keys_to_ignore_on_load_unexpected = ["decoder.*"]
+        encoder = T5EncoderModel.from_pretrained(name)
+    else:
+        raise ValueError(f"No {mode} mode")
 
-    elif mode == "bert":
-        if name.startswith("t5"):
-            T5EncoderModel._keys_to_ignore_on_load_unexpected = ["decoder.*"]
-            encoder = T5EncoderModel.from_pretrained(name)
-        else:
-            encoder = AutoModel.from_pretrained(name).encoder
+    decoder_config = BertConfig(
+        vocab_size=encoder.config.vocab_size,
+        is_decoder=True,
+        add_cross_attention=True,
+        **model_kwargs,
+    )
+    zero_rank_info(f"BERT config:\n{decoder_config}")
 
-        decoder_config = BertConfig(
-            vocab_size=encoder.config.vocab_size,
-            is_decoder=True,
-            add_cross_attention=True,
-            **model_kwargs,
-        )
-        zero_rank_info(f"BERT config:\n{decoder_config}")
+    decoder = AutoModel.from_config(decoder_config)
 
-        decoder = AutoModel.from_config(decoder_config)
-
-        return encoder, decoder, decoder_config.hidden_size
+    return encoder, decoder, decoder_config.hidden_size
 
 
 def freeze_params(model):
