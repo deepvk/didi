@@ -6,22 +6,28 @@ from math import sqrt
 from torch import nn
 from transformers import AutoModel
 from transformers import BertConfig
+from transformers import T5EncoderModel
 
 from src.diffusion.utils import configure_schedule, get_x0, get_diffusion_variables, scale_input
-from src.sampling import sample
 from src.metrics import calculate_batch_ce
+from src.sampling import sample
 from src.utils import zero_rank_info
 
 
 def get_components(name: str, mode: str, **model_kwargs):
-    model = AutoModel.from_pretrained(name)
-
     if mode == "same":
+        model = AutoModel.from_pretrained(name)
         return model.encoder, model.decoder, model.config.d_model
 
     elif mode == "bert":
+        if name.startswith("t5"):
+            T5EncoderModel._keys_to_ignore_on_load_unexpected = ["decoder.*"]
+            encoder = T5EncoderModel.from_pretrained(name)
+        else:
+            encoder = AutoModel.from_pretrained(name).encoder
+
         decoder_config = BertConfig(
-            vocab_size=model.config.vocab_size,
+            vocab_size=encoder.config.vocab_size,
             is_decoder=True,
             add_cross_attention=True,
             **model_kwargs,
@@ -30,7 +36,7 @@ def get_components(name: str, mode: str, **model_kwargs):
 
         decoder = AutoModel.from_config(decoder_config)
 
-        return model.encoder, decoder, decoder_config.hidden_size
+        return encoder, decoder, decoder_config.hidden_size
 
 
 def freeze_params(model):
