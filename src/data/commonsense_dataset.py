@@ -13,6 +13,7 @@ class CommonSenseDataset(IterableDataset):
         file: str,
         tokenizer_name: str,
         max_context_len: int,
+        mode: str,
         infinite: bool = False,
         max_target_len: int = None,
     ):
@@ -33,7 +34,7 @@ class CommonSenseDataset(IterableDataset):
         self.max_target_len = max_target_len or max_context_len
 
         self.bos_token = self.context_tokenizer.bos_token
-        self.eos_token = self.context_tokenizer.eos_token
+        self.eos_token = self.context_tokenizer.eos_token if mode == "blenderbot" else ""
 
         self.file = file
         self.infinite = infinite

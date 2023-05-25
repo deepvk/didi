@@ -38,10 +38,10 @@ def main(config_path: str, dataset_dir: str, ckpt_dir: str = None, resume: str =
 
     if commonsense:
         train_dataset = CommonSenseDataset(
-            join(dataset_dir, "train.jsonl"), config.base_name, infinite=True, **config.dataset
+            join(dataset_dir, "train.jsonl"), config.base_name, config.mode, infinite=True, **config.dataset
         )
         val_dataset = CommonSenseDataset(
-            join(dataset_dir, "valid.jsonl"), config.base_name, infinite=False, **config.dataset
+            join(dataset_dir, "valid.jsonl"), config.base_name, config.mode, infinite=False, **config.dataset
         )
     else:
         train_files_glob = join(dataset_dir, "train", "train.jsonl-*")
