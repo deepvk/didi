@@ -5,6 +5,7 @@ from torch.utils.data import IterableDataset
 from transformers import AutoTokenizer, PreTrainedTokenizer
 
 from src.utils import zero_rank_info
+from src.data.utils import get_mode, wrap_output
 
 
 class CommonSenseDataset(IterableDataset):
@@ -13,10 +14,10 @@ class CommonSenseDataset(IterableDataset):
         file: str,
         tokenizer_name: str,
         max_context_len: int,
-        mode: str,
         infinite: bool = False,
         max_target_len: int = None,
     ):
+        mode = get_mode(tokenizer_name)
         self.context_tokenizer: PreTrainedTokenizer = AutoTokenizer.from_pretrained(
             tokenizer_name, truncation_side="left"
         )
@@ -33,8 +34,8 @@ class CommonSenseDataset(IterableDataset):
         self.max_context_len = max_context_len
         self.max_target_len = max_target_len or max_context_len
 
-        self.bos_token = self.context_tokenizer.bos_token
-        self.eos_token = self.context_tokenizer.eos_token if mode == "blenderbot" else ""
+        self.bos_token = "" if mode == "t5" else self.context_tokenizer.bos_token
+        self.eos_token = self.context_tokenizer.eos_token
 
         self.file = file
         self.infinite = infinite
@@ -48,13 +49,13 @@ class CommonSenseDataset(IterableDataset):
     def pad_idx(self) -> int:
         return self.context_tokenizer.pad_token_id
 
+    @wrap_output
     def __iter__(self) -> Iterator[tuple[str, str]]:
         while True:
             with open(self.file, "rt") as f_in:
                 for line in f_in:
                     sample = json.loads(line)
-                    utterances = [self.bos_token + sample[prp] + self.eos_token for prp in ["src", "trg"]]
-                    yield utterances[0], utterances[1]
+                    yield sample["src"], sample["trg"]
             if not self.infinite:
                 break
 

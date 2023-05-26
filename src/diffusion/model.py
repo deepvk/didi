@@ -8,13 +8,15 @@ from transformers import AutoModel
 from transformers import BertConfig
 from transformers import T5EncoderModel
 
+from src.data.utils import get_mode
 from src.diffusion.utils import configure_schedule, get_x0, get_diffusion_variables, scale_input
 from src.metrics import calculate_batch_ce
 from src.sampling import sample
 from src.utils import zero_rank_info
 
 
-def get_components(name: str, mode: str, **model_kwargs):
+def get_components(name: str, **model_kwargs):
+    mode = get_mode(name)
     if mode == "blenderbot":
         encoder = AutoModel.from_pretrained(name).encoder
     elif mode == "t5":
