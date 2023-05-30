@@ -7,7 +7,8 @@ from torch.utils.data import IterableDataset
 from transformers import AutoTokenizer, PreTrainedTokenizer
 
 from src.utils import zero_rank_info
-from src.data.utils import get_mode, wrap_output
+from src.data.utils import wrap_output
+from src.diffusion.model import get_mode, Modes
 
 
 class RedditDataset(IterableDataset):
@@ -38,9 +39,9 @@ class RedditDataset(IterableDataset):
         self.max_context_len = max_context_len
         self.max_target_len = max_target_len or max_context_len
 
-        self.bos_token = "" if mode == "t5" else self.context_tokenizer.bos_token
-        self.eos_token = self.context_tokenizer.eos_token
-        self.sep_char = "\n" if mode == "t5" else f"{self.bos_token} {self.eos_token}"
+        self.bos_token = self.context_tokenizer.bos_token if mode is Modes.BLENDERBOT else ""
+        self.eos_token = "" if mode is Modes.BERT else self.context_tokenizer.eos_token
+        self.sep = f"{self.bos_token} {self.eos_token}" if mode is Modes.BLENDERBOT else "\n"
 
         self.files: Iterable[str] = glob.glob(file_glob)
         zero_rank_info(f"Using files: {', '.join(self.files)}")
@@ -76,7 +77,7 @@ class RedditDataset(IterableDataset):
                             yield utterances[0], utterances[1]
                             continue
                         # yield full thread
-                        yield self.sep_char.join(utterances[:-1]), utterances[-1]
+                        yield self.sep.join(utterances[:-1]), utterances[-1]
                         continue
 
                     for i in range(1, len(utterances)):
@@ -84,7 +85,7 @@ class RedditDataset(IterableDataset):
                             yield utterances[-1], utterances[i]
 
                         # yield full previous thread
-                        yield self.sep_char.join(utterances[:i]), utterances[i]
+                        yield self.sep.join(utterances[:i]), utterances[i]
 
     def collate_fn(self, samples: list[tuple[str, str]]):
         str_contexts, str_replies = zip(*samples)

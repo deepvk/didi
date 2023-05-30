@@ -5,7 +5,8 @@ from torch.utils.data import IterableDataset
 from transformers import AutoTokenizer, PreTrainedTokenizer
 
 from src.utils import zero_rank_info
-from src.data.utils import get_mode, wrap_output
+from src.data.utils import wrap_output
+from src.diffusion.model import get_mode, Modes
 
 
 class CommonSenseDataset(IterableDataset):
@@ -34,8 +35,8 @@ class CommonSenseDataset(IterableDataset):
         self.max_context_len = max_context_len
         self.max_target_len = max_target_len or max_context_len
 
-        self.bos_token = "" if mode == "t5" else self.context_tokenizer.bos_token
-        self.eos_token = self.context_tokenizer.eos_token
+        self.bos_token = self.context_tokenizer.bos_token if mode is Modes.BLENDERBOT else ""
+        self.eos_token = "" if mode is Modes.BERT else self.context_tokenizer.eos_token
 
         self.file = file
         self.infinite = infinite
