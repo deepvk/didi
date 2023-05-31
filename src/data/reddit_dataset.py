@@ -76,7 +76,7 @@ class RedditDataset(IterableDataset):
 
                     for i in range(1, len(utterances)):
                         if self.single_turn:  # yield previous utterance as context
-                            yield self.preprocess(utterances[-1], utterances[i])
+                            yield self.preprocess(utterances[i-1], utterances[i])
 
                         # yield full previous thread
                         yield self.preprocess(utterances[:i], utterances[i])
