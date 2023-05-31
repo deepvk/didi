@@ -1,6 +1,7 @@
 from functools import partial
 
 import torch
+from enum import Enum
 from lightning import LightningModule
 from math import sqrt
 from torch import nn
@@ -8,18 +9,29 @@ from transformers import AutoModel
 from transformers import BertConfig
 from transformers import T5EncoderModel
 
-from src.data.utils import get_mode
 from src.diffusion.utils import configure_schedule, get_x0, get_diffusion_variables, scale_input
 from src.metrics import calculate_batch_ce
 from src.sampling import sample
 from src.utils import zero_rank_info
 
 
+class Modes(Enum):
+    BLENDERBOT = "blenderbot"
+    T5 = "t5"
+
+
+def get_mode(base_name):
+    for mode in Modes:
+        if mode.value in base_name:
+            return mode
+    raise ValueError(f"Unsupported base name: {base_name}")
+
+
 def get_components(name: str, **model_kwargs):
     mode = get_mode(name)
-    if mode == "blenderbot":
+    if mode is Modes.BLENDERBOT:
         encoder = AutoModel.from_pretrained(name).encoder
-    elif mode == "t5":
+    elif mode is Modes.T5:
         T5EncoderModel._keys_to_ignore_on_load_unexpected = ["decoder.*"]
         encoder = T5EncoderModel.from_pretrained(name)
     else:
