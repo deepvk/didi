@@ -66,7 +66,7 @@ def main(config_path: str, dataset_dir: str, ckpt_dir: str = None, resume: str =
         num_workers=1,
     )
 
-    encoder, decoder, emb_dim = get_components(config.base_name, config.mode, **config.decoder)
+    encoder, decoder, emb_dim = get_components(config.base_name, **config.decoder)
     batch_decoder = partial(train_dataset.reply_tokenizer.batch_decode, skip_special_tokens=False)
     model = DiDi(
         encoder,

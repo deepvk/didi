@@ -4,6 +4,7 @@ from typing import Iterator
 from torch.utils.data import IterableDataset
 from transformers import AutoTokenizer, PreTrainedTokenizer
 
+from src.data.utils import Preprocessor
 from src.utils import zero_rank_info
 
 
@@ -28,12 +29,10 @@ class CommonSenseDataset(IterableDataset):
             "return_tensors": "pt",
             "add_special_tokens": False,
         }
+        self.preprocess = Preprocessor(tokenizer_name)
 
         self.max_context_len = max_context_len
         self.max_target_len = max_target_len or max_context_len
-
-        self.bos_token = self.context_tokenizer.bos_token
-        self.eos_token = self.context_tokenizer.eos_token
 
         self.file = file
         self.infinite = infinite
@@ -52,8 +51,7 @@ class CommonSenseDataset(IterableDataset):
             with open(self.file, "rt") as f_in:
                 for line in f_in:
                     sample = json.loads(line)
-                    utterances = [self.bos_token + sample[prp] + self.eos_token for prp in ["src", "trg"]]
-                    yield utterances[0], utterances[1]
+                    yield self.preprocess(sample["src"], sample["trg"])
             if not self.infinite:
                 break
 

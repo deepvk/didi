@@ -1,6 +1,7 @@
 from functools import partial
 
 import torch
+from enum import Enum
 from lightning import LightningModule
 from math import sqrt
 from torch import nn
@@ -14,10 +15,23 @@ from src.sampling import sample
 from src.utils import zero_rank_info
 
 
-def get_components(name: str, mode: str, **model_kwargs):
-    if mode == "blenderbot":
+class Modes(Enum):
+    BLENDERBOT = "blenderbot"
+    T5 = "t5"
+
+
+def get_mode(base_name):
+    for mode in Modes:
+        if mode.value in base_name:
+            return mode
+    raise ValueError(f"Unsupported base name: {base_name}")
+
+
+def get_components(name: str, **model_kwargs):
+    mode = get_mode(name)
+    if mode is Modes.BLENDERBOT:
         encoder = AutoModel.from_pretrained(name).encoder
-    elif mode == "t5":
+    elif mode is Modes.T5:
         T5EncoderModel._keys_to_ignore_on_load_unexpected = ["decoder.*"]
         encoder = T5EncoderModel.from_pretrained(name)
     else:

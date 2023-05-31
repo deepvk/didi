@@ -6,6 +6,7 @@ from typing import Iterator, Iterable
 from torch.utils.data import IterableDataset
 from transformers import AutoTokenizer, PreTrainedTokenizer
 
+from src.data.utils import Preprocessor
 from src.utils import zero_rank_info
 
 
@@ -32,12 +33,10 @@ class RedditDataset(IterableDataset):
             "return_tensors": "pt",
             "add_special_tokens": False,
         }
+        self.preprocess = Preprocessor(tokenizer_name)
 
         self.max_context_len = max_context_len
         self.max_target_len = max_target_len or max_context_len
-
-        self.bos_token = self.context_tokenizer.bos_token
-        self.eos_token = self.context_tokenizer.eos_token
 
         self.files: Iterable[str] = glob.glob(file_glob)
         zero_rank_info(f"Using files: {', '.join(self.files)}")
@@ -65,22 +64,22 @@ class RedditDataset(IterableDataset):
             with open(file, "rt") as f_in:
                 for line in f_in:
                     sample = json.loads(line)
-                    utterances = [self.bos_token + it + self.eos_token for it in sample["thread"]]
+                    utterances = sample["thread"]
 
                     if not self.multiple_samples:  # yield only one sample per thread
                         if self.single_turn:  # yield only 1 utterance per context (use 0th)
-                            yield utterances[0], utterances[1]
+                            yield self.preprocess(utterances[0], utterances[1])
                             continue
                         # yield full thread
-                        yield " ".join(utterances[:-1]), utterances[-1]
+                        yield self.preprocess(utterances[:-1], utterances[-1])
                         continue
 
                     for i in range(1, len(utterances)):
                         if self.single_turn:  # yield previous utterance as context
-                            yield utterances[-1], utterances[i]
+                            yield self.preprocess(utterances[i - 1], utterances[i])
 
                         # yield full previous thread
-                        yield " ".join(utterances[:i]), utterances[i]
+                        yield self.preprocess(utterances[:i], utterances[i])
 
     def collate_fn(self, samples: list[tuple[str, str]]):
         str_contexts, str_replies = zip(*samples)
