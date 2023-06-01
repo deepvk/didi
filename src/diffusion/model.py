@@ -36,12 +36,10 @@ def get_components(name: str, **model_kwargs):
     elif mode is Modes.BLENDERBOT:
         encoder = AutoModel.from_pretrained(name).encoder
         enc_dim = encoder.config.d_model
-    elif mode is Modes.T5:
+    else:
         T5EncoderModel._keys_to_ignore_on_load_unexpected = ["decoder.*"]
         encoder = T5EncoderModel.from_pretrained(name)
         enc_dim = encoder.config.d_model
-    else:
-        raise ValueError(f"No {mode} mode")
 
     decoder_config = BertConfig(
         vocab_size=encoder.config.vocab_size,

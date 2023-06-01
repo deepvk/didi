@@ -8,9 +8,13 @@ class Preprocessor:
         mode = get_mode(base_name)
         tokenizer = AutoTokenizer.from_pretrained(base_name)
 
-        self.bos = tokenizer.bos_token if mode is Modes.BLENDERBOT else ""
-        self.eos = tokenizer.sep_token if mode is Modes.BERT else tokenizer.eos_token
-        self.sep = "\n" if mode is Modes.T5 else f"{self.bos} {self.eos}"
+        if mode is Modes.BERT:
+            self.bos, self.sep, self.eos = "", tokenizer.sep_token, tokenizer.sep_token
+        elif mode is Modes.BLENDERBOT:
+            self.bos, self.eos = tokenizer.bos_token, tokenizer.eos_token
+            self.sep = f"{self.bos} {self.eos}"
+        else:
+            self.bos, self.sep, self.eos = "", "\n", tokenizer.eos_token
 
     def __call__(self, src, trg):
         if isinstance(src, list):
