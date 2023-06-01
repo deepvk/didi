@@ -16,6 +16,7 @@ from src.utils import zero_rank_info
 
 
 class Modes(Enum):
+    BERT = "bert"
     BLENDERBOT = "blenderbot"
     T5 = "t5"
 
@@ -29,11 +30,16 @@ def get_mode(base_name):
 
 def get_components(name: str, **model_kwargs):
     mode = get_mode(name)
-    if mode is Modes.BLENDERBOT:
+    if mode is Modes.BERT:
+        encoder = AutoModel.from_pretrained(name)
+        enc_dim = encoder.config.hidden_size
+    elif mode is Modes.BLENDERBOT:
         encoder = AutoModel.from_pretrained(name).encoder
+        enc_dim = encoder.config.d_model
     elif mode is Modes.T5:
         T5EncoderModel._keys_to_ignore_on_load_unexpected = ["decoder.*"]
         encoder = T5EncoderModel.from_pretrained(name)
+        enc_dim = encoder.config.d_model
     else:
         raise ValueError(f"No {mode} mode")
 
@@ -47,7 +53,7 @@ def get_components(name: str, **model_kwargs):
 
     decoder = AutoModel.from_config(decoder_config)
 
-    return encoder, decoder, decoder_config.hidden_size
+    return encoder, decoder, enc_dim, decoder_config.hidden_size
 
 
 def freeze_params(model):
@@ -64,7 +70,8 @@ class DiDi(LightningModule):
         self,
         encoder,
         decoder,
-        emb_dim: int,
+        enc_dim: int,
+        dec_dim: int,
         vocabulary_size: int,
         *,
         diffusion_steps: int,
@@ -85,11 +92,11 @@ class DiDi(LightningModule):
         self.diffusion_steps = diffusion_steps
         self.pad_idx = pad_idx
         self.step_freq = step_freq
-        self.encoder_dim = encoder.config.d_model
-        self.decoder_dim = emb_dim
+        self.encoder_dim = enc_dim
+        self.decoder_dim = dec_dim
 
-        self.emb = nn.Embedding(vocabulary_size, emb_dim, padding_idx=pad_idx)
-        self.time_embeds = nn.Embedding(diffusion_steps + 1, emb_dim)
+        self.emb = nn.Embedding(vocabulary_size, dec_dim, padding_idx=pad_idx)
+        self.time_embeds = nn.Embedding(diffusion_steps + 1, dec_dim)
 
         self.sampling_mode = sampling_mode
         self.s_churn = s_churn
@@ -100,10 +107,10 @@ class DiDi(LightningModule):
         freeze_params(self.encoder)
 
         self.decoder = decoder
-        self.classifier = nn.Linear(emb_dim, vocabulary_size)
+        self.classifier = nn.Linear(dec_dim, vocabulary_size)
 
         if self.encoder_dim != self.decoder_dim:
-            self.adapter = nn.Sequential(nn.Linear(self.encoder_dim, emb_dim), nn.Tanh(), nn.Linear(emb_dim, emb_dim))
+            self.adapter = nn.Sequential(nn.Linear(self.encoder_dim, dec_dim), nn.Tanh(), nn.Linear(dec_dim, dec_dim))
 
         sigmas, std_0 = configure_schedule(diffusion_steps, schedule)
         self.register_buffer("sigmas", sigmas)

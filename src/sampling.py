@@ -28,6 +28,9 @@ def sample(raw_context, model, mode, step_freq, tokenizer=None, max_len=-1, raw_
 
     predictions = logits.argmax(-1)
     eos_id = tokenizer.eos_token_id
+    if eos_id is None:
+        eos_id = tokenizer.sep_token_id
+
     replies = tokenizer.batch_decode(truncate_predictions(predictions, eos_id), skip_special_tokens=skip_special)
     return select_reply(replies)
 
