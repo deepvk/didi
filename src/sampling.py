@@ -1,5 +1,6 @@
 import torch
-from src.diffusion.utils import scale_input, get_euler_variables
+
+from src.diffusion.utils import get_euler_variables, scale_input
 
 
 @torch.no_grad()
@@ -27,7 +28,7 @@ def sample(raw_context, model, mode, step_freq, tokenizer=None, max_len=-1, raw_
         raise ValueError("`tokenizer` must be provided.")
 
     predictions = logits.argmax(-1)
-    eos_id = tokenizer.eos_token_id
+    eos_id = tokenizer.eos_token_id or tokenizer.sep_token_id
     replies = tokenizer.batch_decode(truncate_predictions(predictions, eos_id), skip_special_tokens=skip_special)
     return select_reply(replies)
 
