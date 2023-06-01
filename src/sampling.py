@@ -1,5 +1,6 @@
 import torch
-from src.diffusion.utils import scale_input, get_euler_variables
+
+from src.diffusion.utils import get_euler_variables, scale_input
 
 
 @torch.no_grad()

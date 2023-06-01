@@ -10,6 +10,7 @@ from tqdm import tqdm
 from transformers import AutoTokenizer
 
 from src.data.commonsense_dataset import CommonSenseDataset
+from src.data.utils import Preprocessor
 from src.diffusion.model import DiDi
 from src.sampling import sample
 
@@ -46,9 +47,8 @@ def main(
         "add_special_tokens": False,
     }
 
+    preprocess = Preprocessor(config.base_name)
     context_tokenizer = AutoTokenizer.from_pretrained(config.base_name, truncation_side="left")
-    bos = context_tokenizer.bos_token
-    eos = context_tokenizer.eos_token
 
     device = f"cuda:{device_id}" if torch.cuda.is_available() else "cpu"
 
@@ -56,13 +56,15 @@ def main(
     model.eval()
 
     if dataset_dir is None:
-        context = f"{bos} "
+        context = []
         while True:
             try:
-                context += f"{input('You: ')}{eos}"
-                raw_context = context_tokenizer(context, **tokenizer_kwargs).to(device)
+                utterance = input("You: ")
+                context.append(utterance)
+                joined_context, _ = preprocess(context, "")
+                raw_context = context_tokenizer(joined_context, **tokenizer_kwargs).to(device)
                 reply = sample(raw_context, model, mode, freq, context_tokenizer)[0]
-                context += f"{eos} {bos} {reply}{eos} {bos}"
+                context.append(reply)
                 print("DiDi:", reply)
             except KeyboardInterrupt:
                 print("\nDiDi: Get back soon!")
@@ -91,6 +93,7 @@ def main(
 
                     for recov, ref, src in zip(predictions, target, context):
                         print(json.dumps({"recover": recov, "reference": ref, "source": src}), file=f)
+                    break
 
 
 if __name__ == "__main__":
