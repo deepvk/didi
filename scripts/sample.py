@@ -93,7 +93,6 @@ def main(
 
                     for recov, ref, src in zip(predictions, target, context):
                         print(json.dumps({"recover": recov, "reference": ref, "source": src}), file=f)
-                    break
 
 
 if __name__ == "__main__":
