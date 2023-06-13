@@ -69,30 +69,29 @@ def sample_euler(model, x_t, raw_context, cached_context, noise, ones, step_freq
     for t in timesteps:
         noise.normal_(0, 1)
         x_t, cached_context = euler_step(
-            model, x_t, model.sigmas[t], raw_context, cached_context, t, max(t - step_freq, 1), num_sigmas, ones, noise
+            model, x_t, model.sigmas[t], raw_context, cached_context, max(t - step_freq, 1), num_sigmas, ones, noise
         )
 
     noise.normal_(0, 1)
-    x_0, _ = euler_step(model, x_t, model.sigmas[1], raw_context, cached_context, 1, 0, num_sigmas, ones, noise)
+    x_0, _ = euler_step(model, x_t, model.sigmas[1], raw_context, cached_context, 0, num_sigmas, ones, noise)
 
     logits = model.classifier(x_0)
     return logits
 
 
-def euler_step(model, x_t, sigma_t, raw_context, cached_context, t, next_t, num_sigmas, ones, noise):
-    x_t = scale_input(x_t, sigma_t)
+def euler_step(model, x_t, sigma_t, raw_context, cached_context, next_t, num_sigmas, ones, noise):
+    x_t, sigma_hat = get_euler_variables(x_t, noise, sigma_t, model.s_churn, model.s_tmin, model.s_tmax, num_sigmas)
+    t_hat = ((model.sigmas - sigma_hat).abs()).argmin()
 
     x_0, cached_context = model(
         encoder_input_ids=raw_context.input_ids,
         encoder_attention_mask=raw_context.attention_mask,
-        decoder_inputs_embeds=x_t,
-        time_ids=t * ones,
+        decoder_inputs_embeds=scale_input(x_t, sigma_hat),
+        time_ids=t_hat * ones,
         context=cached_context,
     )
 
-    x_t, sigma_hat = get_euler_variables(x_t, noise, sigma_t, model.s_churn, model.s_tmin, model.s_tmax, num_sigmas)
-
-    d = (x_t - x_0) / sigma_t
+    d = (x_t - x_0) / sigma_hat
     dt = model.sigmas[next_t] - sigma_hat
     x_t = x_t + d * dt
     return x_t, cached_context
