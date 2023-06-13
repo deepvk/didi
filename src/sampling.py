@@ -37,6 +37,8 @@ def sample_ddpm(model, x_t, raw_context, cached_context, noise, ones, step_freq)
     diffusion_steps = model.diffusion_steps
     timesteps = range(diffusion_steps, 1, -step_freq)
 
+    x_t = scale_input(x_t, model.sigmas[-1])
+
     for t in timesteps:
         x_0, cached_context = model(
             encoder_input_ids=raw_context.input_ids,
