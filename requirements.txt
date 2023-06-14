@@ -1,8 +1,7 @@
 torch~=2.0.1
 tqdm~=4.65.0
-transformers~=4.29.0
+transformers~=4.30.2
 loguru~=0.7.0
-lightning~=2.0.2
+lightning~=2.0.3
 omegaconf~=2.3.0
-deepspeed~=0.9.2
-wandb~=0.15.2
+wandb~=0.15.4
