@@ -11,7 +11,7 @@ from transformers import AutoTokenizer
 
 from src.data.commonsense_dataset import CommonSenseDataset
 from src.data.utils import Preprocessor
-from src.diffusion.model import DiDi
+from src.diffusion.model import DiDi, get_components
 from src.sampling import sample
 
 
@@ -52,7 +52,8 @@ def main(
 
     device = f"cuda:{device_id}" if torch.cuda.is_available() else "cpu"
 
-    model = DiDi.load_from_checkpoint(model_path).to(device)
+    _, _, enc_dim, dec_dim = get_components(config.base_name)
+    model = DiDi.load_from_checkpoint(model_path, enc_dim=enc_dim, dec_dim=dec_dim, map_location=device)
     model.eval()
 
     if dataset_dir is None:

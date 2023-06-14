@@ -3,7 +3,7 @@ import torch
 from src.diffusion.schedules import cosine_beta_schedule, linear_beta_schedule, sqrt_beta_schedule
 
 
-def configure_schedule(steps: int, schedule: str):
+def configure_schedule(steps: int, schedule: str) -> tuple[torch.Tensor, torch.Tensor]:
     if schedule == "linear":
         betas = linear_beta_schedule(steps)
     elif schedule == "cosine":

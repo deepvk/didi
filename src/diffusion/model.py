@@ -113,6 +113,7 @@ class DiDi(LightningModule):
         sigmas, std_0 = configure_schedule(diffusion_steps, schedule)
         self.register_buffer("sigmas", sigmas)
         self.register_buffer("std_0", std_0)
+        self.sigmas: torch.Tensor
 
         self.lr, self.warmup, self.min_lr = lr, warmup_steps, min_lr
 
@@ -221,7 +222,7 @@ class DiDi(LightningModule):
             decoded_reply = self.batch_decoder(target.input_ids)
             decoded_predictions = self.batch_decoder(predictions)
             data = list(zip(decoded_context, decoded_reply, decoded_predictions))
-            self.logger.log_text("samples", columns=["context", "reply", "predictions"], data=data)
+            self.logger.log_text("samples", columns=["context", "reply", "predictions"], data=data)  # type: ignore
 
     def on_validation_epoch_end(self):
         metrics = {"val/ce": sum(self.val_ce) / len(self.val_ce), "val/accuracy": sum(self.val_acc) / len(self.val_acc)}
