@@ -1,10 +1,12 @@
 from dataclasses import dataclass
+from enum import Enum
 from typing import Optional
 
 from loguru import logger
 from torch.utils.data import Dataset
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer
+from src.data.utils import Preprocessor
 
 
 @dataclass
@@ -15,25 +17,48 @@ class ConvAI2Dialog:
     partner_persona: Optional[list[str]] = None
 
 
+class Conditions(Enum):
+    NONE = 0
+    YOUR = 1
+    PARTNERS = 2
+
+
+def get_condition(path: str):
+    if "none" in path:
+        return Conditions.NONE
+    elif "self" in path:
+        return Conditions.YOUR
+    else:
+        return Conditions.PARTNERS
+
+
 class ConvAI2Dataset(Dataset):
     _YOUR_PERSONA_PREFIX = "your persona: "
     _PARTNER_PERSONA_PREFIX = "partner's persona: "
 
-    def __init__(self, path, tokenizer_name, max_context_len, max_target_len=None, have_candidates=True):
+    def __init__(self, path, tokenizer_name, max_context_len, max_target_len=None, max_condition_len=None):
         self.dataset = []
         self.num_dialogs = 0
 
         self.context_tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, truncation_side="left")
         self.candidate_tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
-
-        bos = self.context_tokenizer.bos_token
-        eos = self.context_tokenizer.eos_token
+        self.tokenizer_kwargs = {
+            "padding": "max_length",
+            "truncation": True,
+            "return_tensors": "pt",
+            "add_special_tokens": False,
+        }
+        preprocessor = Preprocessor(tokenizer_name)
+        bos = preprocessor.bos
+        eos = preprocessor.eos
 
         self.max_context_len = max_context_len
         self.max_target_len = max_target_len or max_context_len
+        self.max_condition_len = max_condition_len or max_context_len
 
-        self.have_candidates = have_candidates
+        self.have_candidates = not "no_cands" in path
         self.vocab_size = self.context_tokenizer.vocab_size
+        self.condition = get_condition(path)
 
         logger.info(f"Loading dataset from '{path}'")
         with open(path, "r") as f:
@@ -53,7 +78,7 @@ class ConvAI2Dataset(Dataset):
                     partner_persona.append(line[len(self._PARTNER_PERSONA_PREFIX) :])
                     continue
 
-                if have_candidates:
+                if self.have_candidates:
                     utterance1, utterance2, _, candidates_str = line.split("\t")
                 else:
                     utterance1, utterance2, *_ = line.split("\t")
@@ -79,14 +104,13 @@ class ConvAI2Dataset(Dataset):
         return_all_candidates = self.have_candidates & return_all_candidates
         str_contexts = [" ".join(sample.context) for sample in samples]
         # [batch size, context seq len]
-        b_contexts = self.context_tokenizer(
-            str_contexts,
-            max_length=self.max_context_len,
-            padding=True,
-            truncation=True,
-            return_tensors="pt",
-            add_special_tokens=False,
-        ).input_ids
+        b_contexts = self.context_tokenizer(str_contexts, max_length=self.max_context_len, **self.tokenizer_kwargs)
+
+        str_conditions = []
+        if self.condition is Conditions.YOUR:
+            str_conditions = [" ".join(sample.my_persona) for sample in samples]
+        elif self.condition is Conditions.PARTNERS:
+            str_conditions = [" ".join(sample.partner_persona) for sample in samples]
 
         if return_all_candidates:
             str_candidates = [it for sample in samples for it in sample.candidates]
@@ -94,11 +118,15 @@ class ConvAI2Dataset(Dataset):
             str_candidates = [sample.candidates[0] for sample in samples]
 
         # Tokenizer truncates on the left, but for candidates we want to truncate on the right
-        b_candidates = self.candidate_tokenizer(
-            str_candidates, padding="max_length", return_tensors="pt", add_special_tokens=False
-        ).input_ids
-        b_candidates = b_candidates[:, : self.max_target_len]
-        # [batch size, # candidates, candidates seq len]
-        b_candidates = b_candidates.view(len(samples), -1, b_candidates.size(1))
+        b_candidates = self.candidate_tokenizer(str_candidates, max_length=self.max_target_len, **self.tokenizer_kwargs)
+        # b_candidates = b_candidates[:, : self.max_target_len]
+        # # [batch size, # candidates, candidates seq len]
+        # b_candidates = b_candidates.view(len(samples), -1, b_candidates.size(1))
 
-        return b_contexts, b_candidates.squeeze(1)
+        if self.condition is Conditions.NONE:
+            return b_contexts, b_candidates  # .squeeze(1)
+        else:
+            b_conditions = self.candidate_tokenizer(
+                str_conditions, max_length=self.max_condition_len, **self.tokenizer_kwargs
+            )
+            return b_contexts, b_candidates, b_conditions  # .squeeze(1)
