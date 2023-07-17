@@ -47,9 +47,7 @@ def rsqrt_with_warmup(step: int, max_lr: float, min_lr: float, warmup: int) -> f
 
 def get_cached_content(model, encoder_input_ids, encoder_attention_mask):
     with torch.no_grad():
-        context = model.encoder(
-            input_ids=encoder_input_ids, attention_mask=encoder_attention_mask
-        ).last_hidden_state
+        context = model.encoder(input_ids=encoder_input_ids, attention_mask=encoder_attention_mask).last_hidden_state
 
         if model.encoder_dim != model.decoder_dim:
             context = model.adapter(context)
@@ -57,13 +55,13 @@ def get_cached_content(model, encoder_input_ids, encoder_attention_mask):
 
 
 def get_optimizers(model):
-        optimizer = torch.optim.AdamW(model.parameters(), lr=1.0)  # Fully control LR from scheduler
-        scheduler_lambda = partial(rsqrt_with_warmup, max_lr=model.lr, min_lr=model.min_lr, warmup=model.warmup)
-        lr_scheduler_config = {
-            "scheduler": torch.optim.lr_scheduler.LambdaLR(optimizer, scheduler_lambda),
-            "interval": "step",
-        }
-        return [optimizer], [lr_scheduler_config]
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1.0)  # Fully control LR from scheduler
+    scheduler_lambda = partial(rsqrt_with_warmup, max_lr=model.lr, min_lr=model.min_lr, warmup=model.warmup)
+    lr_scheduler_config = {
+        "scheduler": torch.optim.lr_scheduler.LambdaLR(optimizer, scheduler_lambda),
+        "interval": "step",
+    }
+    return [optimizer], [lr_scheduler_config]
 
 
 def calculate_train_step(model, emb, x_0, x_0_hat, target, t):
@@ -79,7 +77,7 @@ def calculate_train_step(model, emb, x_0, x_0_hat, target, t):
 
     noise, sigma_T = torch.randn_like(x_0), model.sigmas[-1]
     x_T = scale_input(x_0 + sigma_T * noise, sigma_T)
-    t_T_loss = (x_T ** 2 * non_pad_mask).mean()
+    t_T_loss = (x_T**2 * non_pad_mask).mean()
 
     loss = mse + ce + t_T_loss
 
