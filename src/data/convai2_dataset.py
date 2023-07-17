@@ -108,9 +108,9 @@ class ConvAI2Dataset(Dataset):
 
         str_conditions = []
         if self.condition is Conditions.YOUR:
-            str_conditions = [" ".join(sample.my_persona) for sample in samples]
+            str_conditions = [" ".join(sample.my_persona) for sample in samples]  # type: ignore
         elif self.condition is Conditions.PARTNERS:
-            str_conditions = [" ".join(sample.partner_persona) for sample in samples]
+            str_conditions = [" ".join(sample.partner_persona) for sample in samples]  # type: ignore
 
         if return_all_candidates:
             str_candidates = [it for sample in samples for it in sample.candidates]
