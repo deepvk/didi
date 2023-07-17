@@ -66,7 +66,10 @@ def main(config_path: str, dataset_dir: str, ckpt_dir: str = None, resume: str =
         num_workers=1,
     )
 
-    encoder, decoder, enc_dim, dec_dim = get_components(config.base_name, **config.decoder)
+    if config.encoder.freeze:
+        assert config.encoder.pretrained, "Frozen encoder should be pretrained"
+
+    encoder, decoder, enc_dim, dec_dim = get_components(config.base_name, config.encoder.pretrained, **config.decoder)
     batch_decoder = partial(train_dataset.reply_tokenizer.batch_decode, skip_special_tokens=False)
     model = DiDi(
         encoder,
@@ -74,6 +77,7 @@ def main(config_path: str, dataset_dir: str, ckpt_dir: str = None, resume: str =
         enc_dim,
         dec_dim,
         train_dataset.vocab_size,
+        config.encoder.freeze,
         pad_idx=train_dataset.pad_idx,
         batch_decoder=batch_decoder,
         **config.didi,
