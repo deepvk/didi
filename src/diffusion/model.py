@@ -71,7 +71,7 @@ class DiDi(LightningModule):
         enc_dim: int,
         dec_dim: int,
         vocabulary_size: int,
-        freeze: bool,
+        freeze_encoder: bool,
         *,
         diffusion_steps: int,
         schedule: str,
@@ -103,7 +103,7 @@ class DiDi(LightningModule):
         self.s_tmax = s_tmax
 
         self.encoder = encoder
-        if freeze:
+        if freeze_encoder:
             freeze_params(self.encoder)
 
         self.decoder = decoder
