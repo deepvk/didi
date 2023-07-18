@@ -32,7 +32,7 @@ def get_components(name: str, pretrained: bool = True, **model_kwargs):
         encoder = AutoModel.from_pretrained(name)
         enc_dim = encoder.config.hidden_size
         if not pretrained:
-            encoder = BertModel(encoder.config)
+            encoder = encoder.apply(encoder._init_weights)
     elif mode is Modes.BLENDERBOT:
         encoder = AutoModel.from_pretrained(name).encoder
         enc_dim = encoder.config.d_model
