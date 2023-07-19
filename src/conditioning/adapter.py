@@ -49,7 +49,7 @@ class Adapter(LightningModule):
         self.lr, self.warmup, self.min_lr = lr, warmup_steps, min_lr
 
     def configure_optimizers(self):
-        return get_optimizers(self)
+        return get_optimizers(self.parameters(), self.lr, self.warmup, self.min_lr)
 
     def forward(
         self,

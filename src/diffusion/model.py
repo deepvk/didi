@@ -112,7 +112,7 @@ class DiDi(LightningModule):
         self.batch_decoder = batch_decoder
 
     def configure_optimizers(self):
-        return get_optimizers(self)
+        return get_optimizers(self.parameters(), self.lr, self.warmup, self.min_lr)
 
     def train(self, mode: bool = True):
         super().train(mode)

@@ -54,9 +54,9 @@ def get_cached_content(model, encoder_input_ids, encoder_attention_mask):
     return context
 
 
-def get_optimizers(model):
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1.0)  # Fully control LR from scheduler
-    scheduler_lambda = partial(rsqrt_with_warmup, max_lr=model.lr, min_lr=model.min_lr, warmup=model.warmup)
+def get_optimizers(parameters, lr, warmup, min_lr):
+    optimizer = torch.optim.AdamW(parameters, lr=1.0)  # Fully control LR from scheduler
+    scheduler_lambda = partial(rsqrt_with_warmup, max_lr=lr, min_lr=min_lr, warmup=warmup)
     lr_scheduler_config = {
         "scheduler": torch.optim.lr_scheduler.LambdaLR(optimizer, scheduler_lambda),
         "interval": "step",
