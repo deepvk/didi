@@ -5,9 +5,7 @@ from enum import Enum
 from lightning import LightningModule
 from math import sqrt
 from torch import nn
-from transformers import AutoModel
-from transformers import BertConfig
-from transformers import T5EncoderModel
+from transformers import AutoModel, BertConfig, BertModel, T5EncoderModel
 
 from src.diffusion.utils import configure_schedule, get_x0, get_diffusion_variables, scale_input
 from src.metrics import calculate_batch_ce
@@ -28,11 +26,13 @@ def get_mode(base_name):
     raise ValueError(f"Unsupported base name: {base_name}")
 
 
-def get_components(name: str, **model_kwargs):
+def get_components(name: str, pretrained: bool = True, **model_kwargs):
     mode = get_mode(name)
     if mode is Modes.BERT:
         encoder = AutoModel.from_pretrained(name)
         enc_dim = encoder.config.hidden_size
+        if not pretrained:
+            encoder = encoder.apply(encoder._init_weights)
     elif mode is Modes.BLENDERBOT:
         encoder = AutoModel.from_pretrained(name).encoder
         enc_dim = encoder.config.d_model
@@ -71,6 +71,7 @@ class DiDi(LightningModule):
         enc_dim: int,
         dec_dim: int,
         vocabulary_size: int,
+        freeze_encoder: bool,
         *,
         diffusion_steps: int,
         schedule: str,
@@ -102,7 +103,8 @@ class DiDi(LightningModule):
         self.s_tmax = s_tmax
 
         self.encoder = encoder
-        freeze_params(self.encoder)
+        if freeze_encoder:
+            freeze_params(self.encoder)
 
         self.decoder = decoder
         self.classifier = nn.Linear(dec_dim, vocabulary_size)
