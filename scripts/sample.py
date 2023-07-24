@@ -12,7 +12,7 @@ from transformers import AutoTokenizer
 from src.data.commonsense_dataset import CommonSenseDataset
 from src.data.utils import Preprocessor
 from src.diffusion.model import DiDi, get_components
-from src.sampling import sample
+from src.pipeline.sampling import sample
 
 
 def configure_arg_parser():

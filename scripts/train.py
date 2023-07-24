@@ -12,7 +12,7 @@ from src.data.distributed_dataset import DistributedIterableDataset
 from src.data.reddit_dataset import RedditDataset
 from src.diffusion.model import DiDi
 from src.diffusion.model import get_components
-from src.training import train_model
+from src.pipeline.training import train_model
 from src.utils import filter_warnings, setup_logger, zero_rank_info
 
 
