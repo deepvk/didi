@@ -100,17 +100,15 @@ class ConvAI2Dataset(Dataset):
     def __getitem__(self, idx: int) -> ConvAI2Dialog:
         return self.dataset[idx]
 
-    def collate_fn(self, samples: list[ConvAI2Dialog], return_all_candidates: bool = False):
+    def collate_fn(self,
+                   samples: list[ConvAI2Dialog],
+                   return_all_candidates: bool = False,
+                   return_condition: bool = False,
+                   ):
         return_all_candidates = self.have_candidates & return_all_candidates
         str_contexts = [" ".join(sample.context) for sample in samples]
         # [batch size, context seq len]
         b_contexts = self.context_tokenizer(str_contexts, max_length=self.max_context_len, **self.tokenizer_kwargs)
-
-        str_conditions = []
-        if self.condition is Conditions.YOUR:
-            str_conditions = [" ".join(sample.my_persona) for sample in samples]  # type: ignore
-        elif self.condition is Conditions.PARTNERS:
-            str_conditions = [" ".join(sample.partner_persona) for sample in samples]  # type: ignore
 
         if return_all_candidates:
             str_candidates = [it for sample in samples for it in sample.candidates]
@@ -119,14 +117,19 @@ class ConvAI2Dataset(Dataset):
 
         # Tokenizer truncates on the left, but for candidates we want to truncate on the right
         b_candidates = self.candidate_tokenizer(str_candidates, max_length=self.max_target_len, **self.tokenizer_kwargs)
-        # b_candidates = b_candidates[:, : self.max_target_len]
-        # # [batch size, # candidates, candidates seq len]
-        # b_candidates = b_candidates.view(len(samples), -1, b_candidates.size(1))
 
-        if self.condition is Conditions.NONE:
-            return b_contexts, b_candidates  # .squeeze(1)
-        else:
+        if return_condition:
+            str_conditions = []
+            if self.condition is Conditions.YOUR:
+                str_conditions = [" ".join(sample.my_persona) for sample in samples]  # type: ignore
+            elif self.condition is Conditions.PARTNERS:
+                str_conditions = [" ".join(sample.partner_persona) for sample in samples]  # type: ignore
+
             b_conditions = self.candidate_tokenizer(
                 str_conditions, max_length=self.max_condition_len, **self.tokenizer_kwargs
             )
-            return b_contexts, b_candidates, b_conditions  # .squeeze(1)
+            return b_contexts, b_candidates, b_conditions
+        else:
+            # [batch size, # candidates, candidates seq len]
+            b_candidates = b_candidates.view(len(samples), -1, b_candidates.size(1))
+            return b_contexts, b_candidates.squeeze(1)
