@@ -100,11 +100,12 @@ class ConvAI2Dataset(Dataset):
     def __getitem__(self, idx: int) -> ConvAI2Dialog:
         return self.dataset[idx]
 
-    def collate_fn(self,
-                   samples: list[ConvAI2Dialog],
-                   return_all_candidates: bool = False,
-                   return_condition: bool = False,
-                   ):
+    def collate_fn(
+            self,
+            samples: list[ConvAI2Dialog],
+            return_all_candidates: bool = False,
+            return_condition: bool = False,
+    ):
         return_all_candidates = self.have_candidates & return_all_candidates
         str_contexts = [" ".join(sample.context) for sample in samples]
         # [batch size, context seq len]
