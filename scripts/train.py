@@ -78,7 +78,7 @@ def main(config_path: str, dataset_dir: str, ckpt_dir: str = None, resume: str =
         dec_dim,
         train_dataset.vocab_size,
         config.encoder.freeze,
-        config.decoder.share_classifier,
+        config.decoder.tie_weights,
         pad_idx=train_dataset.pad_idx,
         batch_decoder=batch_decoder,
         **config.didi,
