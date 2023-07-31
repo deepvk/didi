@@ -15,7 +15,6 @@ class AdapterBlock(nn.Module):
         self.head_dim = input_dim // num_heads
         self.num_heads = num_heads
 
-        self.attention = memory_efficient_attention
         self.query = nn.Linear(input_dim, input_dim)
         self.key = nn.Linear(input_dim, input_dim)
         self.value = nn.Linear(input_dim, input_dim)
@@ -33,11 +32,12 @@ class AdapterBlock(nn.Module):
         key = self.split_heads(self.key(encoder_hidden_states), batch_size)
         value = self.split_heads(self.value(encoder_hidden_states), batch_size)
 
-        mask = maybe_merge_masks(
-            None, encoder_attention_mask.bool(), batch_size, src_len, self.num_heads, trg_len
-        ).view(batch_size, self.num_heads, src_len, trg_len)
+        mask = maybe_merge_masks(None, encoder_attention_mask.bool(), batch_size, src_len, self.num_heads, trg_len)
+        mask = mask.view(batch_size, self.num_heads, src_len, trg_len)
         float_mask = torch.where(mask, 0, float("-inf"))
-        return self.out(self.attention(query, key, value, attn_bias=float_mask).view(batch_size, trg_len, emb_dim))
+        attn_result = memory_efficient_attention(query, key, value, attn_bias=float_mask)
+        output = self.out(attn_result.view(batch_size, trg_len, emb_dim))
+        return output
 
 
 class Adapter(LightningModule):
