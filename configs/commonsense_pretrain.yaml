@@ -1,5 +1,8 @@
 seed: 0xBADB01
-base_name: "facebook/blenderbot-400M-distill"
+#base_name: "facebook/blenderbot-400M-distill"
+#base_name: "facebook/blenderbot-3B"
+#base_name: "google/t5-v1_1-xl"
+base_name: "bert-large-uncased"
 
 batch_size: 256
 val_batch_size: 256
@@ -9,26 +12,25 @@ dataset:
   max_context_len: 64
   max_target_len: 64
 
-decoder:
-  mode: "bert"
-  num_hidden_layers: 3
-  hidden_size: 512
-  intermediate_size: 2048
-  num_attention_heads: 8
-  hidden_dropout_prob: 0.0
-  attention_probs_dropout_prob: 0.0
+encoder:
+  pretrained: True
+  freeze: False
 
+decoder:
+  hidden_dropout_prob: 0.1
+  attention_probs_dropout_prob: 0.1
 
 didi:
   diffusion_steps: 2000
   schedule: "sqrt"
   sampling_mode: "ddpm"
   step_freq: 1
-  lr: 1e-3
-  warmup_steps: 2_500
-  min_lr: 1e-3
+  lr: 1e-4
+  warmup_steps: 10_000
+  min_lr: 5e-5
 
 trainer:
   devices: 8
   max_steps: 150_000
   val_check_interval: 10_000
+  gradient_clip_val: 1.0
