@@ -9,7 +9,8 @@ class Preprocessor:
         tokenizer = AutoTokenizer.from_pretrained(base_name)
 
         if mode is Modes.BERT:
-            self.bos, self.sep, self.eos = "", tokenizer.sep_token, tokenizer.sep_token
+            self.bos, self.eos = tokenizer.cls_token, tokenizer.sep_token
+            self.sep = f"{self.bos} {self.eos}"
         elif mode is Modes.BLENDERBOT:
             self.bos, self.eos = tokenizer.bos_token, tokenizer.eos_token
             self.sep = f"{self.bos} {self.eos}"

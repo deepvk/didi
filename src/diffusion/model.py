@@ -1,11 +1,11 @@
+from enum import Enum
 from functools import partial
 
 import torch
-from enum import Enum
 from lightning import LightningModule
 from math import sqrt
 from torch import nn
-from transformers import AutoModel, BertConfig, BertModel, T5EncoderModel
+from transformers import AutoModel, BertConfig, T5EncoderModel
 
 from src.diffusion.utils import configure_schedule, get_x0, get_diffusion_variables, scale_input
 from src.metrics import calculate_batch_ce
@@ -95,15 +95,22 @@ class DiDi(LightningModule):
         self.decoder_dim = dec_dim
 
         self.emb = nn.Embedding(vocabulary_size, dec_dim, padding_idx=pad_idx)
-        self.time_embeds = nn.Embedding(diffusion_steps + 1, dec_dim)
+        # self.time_embeds = nn.Embedding(diffusion_steps + 1, dec_dim)
+        self.time_embeds = nn.Sequential(
+            nn.Embedding(diffusion_steps + 1, dec_dim),
+            nn.Linear(dec_dim, dec_dim * 4),
+            nn.SiLU(),
+            nn.Linear(dec_dim * 4, dec_dim),
+        )
 
         self.sampling_mode = sampling_mode
         self.s_churn = s_churn
         self.s_tmin = s_tmin
         self.s_tmax = s_tmax
 
+        self.freeze_encoder = freeze_encoder
         self.encoder = encoder
-        if freeze_encoder:
+        if self.freeze_encoder:
             freeze_params(self.encoder)
 
         self.decoder = decoder
@@ -137,6 +144,13 @@ class DiDi(LightningModule):
         self.encoder.eval()  # Keep encoder always in eval mode
         return self
 
+    def _encode_context(self, encoder_input_ids, encoder_attention_mask):
+        context = self.encoder(input_ids=encoder_input_ids, attention_mask=encoder_attention_mask).last_hidden_state
+
+        if self.encoder_dim != self.decoder_dim:
+            context = self.adapter(context)
+        return context
+
     def forward(
         self,
         encoder_input_ids: torch.Tensor = None,
@@ -149,13 +163,11 @@ class DiDi(LightningModule):
             raise ValueError("Either `encoder_input_ids` or `context` must be provided.")
 
         if context is None:
-            with torch.no_grad():
-                context = self.encoder(
-                    input_ids=encoder_input_ids, attention_mask=encoder_attention_mask
-                ).last_hidden_state
-
-                if self.encoder_dim != self.decoder_dim:
-                    context = self.adapter(context)
+            if self.freeze_encoder:
+                with torch.no_grad():
+                    context = self._encode_context(encoder_input_ids, encoder_attention_mask)
+            else:
+                context = self._encode_context(encoder_input_ids, encoder_attention_mask)
 
         time_embeds = self.time_embeds(time_ids)
         input_embeds = decoder_inputs_embeds + time_embeds

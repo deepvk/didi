@@ -2,9 +2,9 @@ seed: 0xBADB01
 #base_name: "facebook/blenderbot-400M-distill"
 #base_name: "facebook/blenderbot-3B"
 #base_name: "google/t5-v1_1-xl"
-base_name: "bert-large-uncased"
+base_name: "bert-base-uncased"
 
-batch_size: 256
+batch_size: 128
 val_batch_size: 256
 save_interval: 10_000
 
@@ -13,7 +13,7 @@ dataset:
   max_target_len: 64
 
 encoder:
-  pretrained: True
+  pretrained: False
   freeze: False
 
 decoder:
@@ -31,6 +31,6 @@ didi:
 
 trainer:
   devices: 8
-  max_steps: 150_000
+  max_steps: 100_000
   val_check_interval: 10_000
   gradient_clip_val: 1.0
