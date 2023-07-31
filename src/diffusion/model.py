@@ -72,6 +72,7 @@ class DiDi(LightningModule):
         dec_dim: int,
         vocabulary_size: int,
         freeze_encoder: bool,
+        share_classifier: bool,
         *,
         diffusion_steps: int,
         schedule: str,
@@ -107,7 +108,11 @@ class DiDi(LightningModule):
             freeze_params(self.encoder)
 
         self.decoder = decoder
-        self.classifier = nn.Linear(dec_dim, vocabulary_size)
+        if share_classifier:
+            self.classifier = nn.Linear(dec_dim, vocabulary_size, bias=False)
+            self.classifier.weight = self.emb.weight
+        else:
+            self.classifier = nn.Linear(dec_dim, vocabulary_size)
 
         if self.encoder_dim != self.decoder_dim:
             self.adapter = nn.Sequential(nn.Linear(self.encoder_dim, dec_dim), nn.Tanh(), nn.Linear(dec_dim, dec_dim))
