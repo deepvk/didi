@@ -1,11 +1,12 @@
 from functools import partial
 
 import torch
+from contextlib import nullcontext
 from enum import Enum
 from lightning import LightningModule
 from math import sqrt
 from torch import nn
-from transformers import AutoModel, BertConfig, BertModel, T5EncoderModel
+from transformers import AutoModel, BertConfig, T5EncoderModel
 
 from src.diffusion.utils import configure_schedule, get_x0, get_diffusion_variables, scale_input
 from src.metrics import calculate_batch_ce
@@ -103,6 +104,7 @@ class DiDi(LightningModule):
         self.s_tmax = s_tmax
 
         self.encoder = encoder
+        self.freeze_encoder = freeze_encoder
         if freeze_encoder:
             freeze_params(self.encoder)
 
@@ -149,7 +151,7 @@ class DiDi(LightningModule):
             raise ValueError("Either `encoder_input_ids` or `context` must be provided.")
 
         if context is None:
-            with torch.no_grad():
+            with torch.no_grad() if self.freeze_encoder else nullcontext():
                 context = self.encoder(
                     input_ids=encoder_input_ids, attention_mask=encoder_attention_mask
                 ).last_hidden_state
