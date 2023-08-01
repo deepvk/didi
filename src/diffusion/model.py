@@ -130,7 +130,8 @@ class DiDi(LightningModule):
         if encoder_input_ids is None and context is None:
             raise ValueError("Either `encoder_input_ids` or `context` must be provided.")
 
-        context = context or get_cached_content(self.didi, encoder_input_ids, encoder_attention_mask)
+        if context is None:
+            context = get_cached_content(self, encoder_input_ids, encoder_attention_mask)
 
         time_embeds = self.time_embeds(time_ids)
         input_embeds = decoder_inputs_embeds + time_embeds
@@ -158,7 +159,7 @@ class DiDi(LightningModule):
             time_ids=t,
         )  # [batch size; seq len; emb dim]
 
-        loss, metrics = calculate_train_step(self.didi, emb, x_0, x_0_hat, target, t)
+        loss, metrics = calculate_train_step(self, emb, x_0, x_0_hat, target, t)
         self.log_dict(metrics, sync_dist=True, on_step=True, on_epoch=False)
         return loss
 

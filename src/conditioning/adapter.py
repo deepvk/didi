@@ -96,8 +96,8 @@ class Adapter(LightningModule):
 
         return hidden_states, context, condition
 
-    def training_step(self, batch: list, batch_idx: int):
-        raw_context, target, condition = batch
+    def training_step(self, batch: dict, batch_idx: int):
+        raw_context, target, condition = batch["context"], batch["target"], batch["condition"]
         emb = self.didi.emb(target.input_ids)
         x_0 = get_x0(emb, self.didi.std_0)
         noise = torch.randn_like(x_0)
