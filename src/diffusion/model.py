@@ -85,6 +85,7 @@ class DiDi(LightningModule):
         s_churn: float = 0.0,
         s_tmin: float = 0.0,
         s_tmax: float = float("+inf"),
+        guidance_strength: float = 0.0,
         batch_decoder=None,
     ):
         super().__init__()
@@ -108,6 +109,7 @@ class DiDi(LightningModule):
         self.s_churn = s_churn
         self.s_tmin = s_tmin
         self.s_tmax = s_tmax
+        self.guidance_strength = guidance_strength
 
         self.freeze_encoder = freeze_encoder
         self.encoder = encoder
@@ -182,8 +184,8 @@ class DiDi(LightningModule):
         ).last_hidden_state
         return output, context
 
-    def training_step(self, batch: list, batch_idx: int):
-        raw_context, target = batch
+    def training_step(self, batch: dict, batch_idx: int):
+        raw_context, target = batch["context"], batch["target"]
         emb = self.emb(target.input_ids)
         x_0 = get_x0(emb, self.std_0)
         noise = torch.randn_like(x_0)
@@ -222,10 +224,20 @@ class DiDi(LightningModule):
         self.log_dict(metrics, sync_dist=True, on_step=True, on_epoch=False)
         return loss
 
-    def validation_step(self, batch: list, batch_idx: int):
-        raw_context, target = batch
+    def validation_step(self, batch: dict, batch_idx: int):
+        raw_context, target = batch["context"], batch["target"]
+        empty_context = batch["empty_context"] if "empty_context" in batch else None
         max_trg_len = target.input_ids.shape[1]
-        logits = sample(raw_context, self, self.sampling_mode, self.step_freq, max_len=max_trg_len, raw_output=True)
+        logits = sample(
+            raw_context,
+            self,
+            self.sampling_mode,
+            self.step_freq,
+            empty_context,
+            self.guidance_strength,
+            max_len=max_trg_len,
+            raw_output=True,
+        )
         predictions = logits.argmax(-1)
 
         self.val_ce.append(calculate_batch_ce(logits, target.input_ids, target.attention_mask).item())

@@ -17,7 +17,8 @@ class RedditDataset(IterableDataset):
         tokenizer_name: str,
         max_context_len: int,
         max_target_len: int = None,
-        dropout_prob: float = 0.,
+        dropout_prob: float = 0.0,
+        validation: bool = False,
         infinite: bool = False,
         multiple_samples_from_threads: bool = True,
         single_turn: bool = False,
@@ -34,7 +35,7 @@ class RedditDataset(IterableDataset):
             "return_tensors": "pt",
             "add_special_tokens": False,
         }
-        self.preprocess = Preprocessor(tokenizer_name, dropout_prob)
+        self.preprocess = Preprocessor(tokenizer_name, dropout_prob if not validation else 0.0)
 
         self.max_context_len = max_context_len
         self.max_target_len = max_target_len or max_context_len
@@ -83,9 +84,16 @@ class RedditDataset(IterableDataset):
                         yield self.preprocess(utterances[:i], utterances[i])
 
     def collate_fn(self, samples: list[tuple[str, str]]):
-        str_contexts, str_replies = zip(*samples)
+        output = {}
+        str_contexts, str_replies, empty_contexts = zip(*samples)
         # [batch size; context seq len]
-        contexts = self.context_tokenizer(str_contexts, max_length=self.max_context_len, **self.tokenizer_kwargs)
+        output["context"] = self.context_tokenizer(
+            str_contexts, max_length=self.max_context_len, **self.tokenizer_kwargs
+        )
         # [batch size; target seq len]
-        replies = self.reply_tokenizer(str_replies, max_length=self.max_target_len, **self.tokenizer_kwargs)
-        return contexts, replies
+        output["target"] = self.reply_tokenizer(str_replies, max_length=self.max_target_len, **self.tokenizer_kwargs)
+        # [batch size; context seq len]
+        output["empty_context"] = self.context_tokenizer(
+            empty_contexts, max_length=self.max_context_len, **self.tokenizer_kwargs
+        )
+        return output

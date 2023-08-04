@@ -5,7 +5,7 @@ import torch
 
 
 class Preprocessor:
-    def __init__(self, base_name: str, context_dropout_prob: float = 0.):
+    def __init__(self, base_name: str, context_dropout_prob: float = 0.0):
         mode = get_mode(base_name)
         tokenizer = AutoTokenizer.from_pretrained(base_name)
 
@@ -21,8 +21,8 @@ class Preprocessor:
             self.bos, self.sep, self.eos = "", "\n", tokenizer.eos_token
 
     def __call__(self, src, trg):
-        if isinstance(src, list):
-            src = self.sep.join(src)
         if torch.rand(1) < self.dropout_prob:
             src = ""
-        return self.bos + src + self.eos, self.bos + trg + self.eos
+        elif isinstance(src, list):
+            src = self.sep.join(src)
+        return self.bos + src + self.eos, self.bos + trg + self.eos, self.bos + "" + self.eos

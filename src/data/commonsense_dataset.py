@@ -56,12 +56,15 @@ class CommonSenseDataset(IterableDataset):
                 break
 
     def collate_fn(self, samples: list[tuple[str, str]]):
-        str_contexts, str_replies = zip(*samples)
+        output = {}
+        str_contexts, str_replies, empty_contexts = zip(*samples)
         # [batch size; context seq len]
-        contexts = self.context_tokenizer(str_contexts, max_length=self.max_context_len, **self.tokenizer_kwargs)
+        output["context"] = self.context_tokenizer(
+            str_contexts, max_length=self.max_context_len, **self.tokenizer_kwargs
+        )
         # [batch size; target seq len]
-        replies = self.reply_tokenizer(str_replies, max_length=self.max_target_len, **self.tokenizer_kwargs)
-        return contexts, replies
+        output["target"] = self.reply_tokenizer(str_replies, max_length=self.max_target_len, **self.tokenizer_kwargs)
+        return output
 
     def test_collate_fn(self, samples: list[tuple[str, str]]):
         str_contexts, str_replies = zip(*samples)

@@ -48,7 +48,9 @@ def main(config_path: str, dataset_dir: str, ckpt_dir: str = None, resume: str =
         train_dataset = RedditDataset(train_files_glob, config.base_name, infinite=True, **config.dataset)
 
         val_files_glob = join(dataset_dir, "val.jsonl")
-        val_dataset = RedditDataset(val_files_glob, config.base_name, infinite=False, **config.dataset)
+        val_dataset = RedditDataset(
+            val_files_glob, config.base_name, infinite=False, validation=True, **config.dataset
+        )
 
     train_dataloader = DataLoader(
         DistributedIterableDataset(train_dataset),
