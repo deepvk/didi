@@ -1,12 +1,15 @@
 from transformers import AutoTokenizer
 
 from src.diffusion.model import get_mode, Modes
+import torch
 
 
 class Preprocessor:
-    def __init__(self, base_name):
+    def __init__(self, base_name: str, context_dropout_prob: float = 0.):
         mode = get_mode(base_name)
         tokenizer = AutoTokenizer.from_pretrained(base_name)
+
+        self.dropout_prob = context_dropout_prob
 
         if mode is Modes.BERT:
             self.bos, self.eos = tokenizer.cls_token, tokenizer.sep_token
@@ -20,4 +23,6 @@ class Preprocessor:
     def __call__(self, src, trg):
         if isinstance(src, list):
             src = self.sep.join(src)
+        if torch.rand(1) < self.dropout_prob:
+            src = ""
         return self.bos + src + self.eos, self.bos + trg + self.eos

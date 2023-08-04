@@ -17,6 +17,7 @@ class RedditDataset(IterableDataset):
         tokenizer_name: str,
         max_context_len: int,
         max_target_len: int = None,
+        dropout_prob: float = 0.,
         infinite: bool = False,
         multiple_samples_from_threads: bool = True,
         single_turn: bool = False,
@@ -33,7 +34,7 @@ class RedditDataset(IterableDataset):
             "return_tensors": "pt",
             "add_special_tokens": False,
         }
-        self.preprocess = Preprocessor(tokenizer_name)
+        self.preprocess = Preprocessor(tokenizer_name, dropout_prob)
 
         self.max_context_len = max_context_len
         self.max_target_len = max_target_len or max_context_len
