@@ -47,7 +47,7 @@ def main(config_path: str, dataset_dir: str, ckpt_dir: str = None, resume: str =
         train_files_glob = join(dataset_dir, "train", "train.jsonl-*")
         train_dataset = RedditDataset(train_files_glob, config.base_name, infinite=True, **config.dataset)
 
-        val_files_glob = join(dataset_dir, "val.jsonl")
+        val_files_glob = join(dataset_dir, "val.jsonl.gz")
         val_dataset = RedditDataset(val_files_glob, config.base_name, infinite=False, **config.dataset)
 
     train_dataloader = DataLoader(
@@ -78,7 +78,6 @@ def main(config_path: str, dataset_dir: str, ckpt_dir: str = None, resume: str =
         dec_dim,
         train_dataset.vocab_size,
         config.encoder.freeze,
-        config.decoder.tie_weights,
         pad_idx=train_dataset.pad_idx,
         batch_decoder=batch_decoder,
         **config.didi,

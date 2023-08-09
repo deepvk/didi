@@ -1,4 +1,5 @@
 import glob
+import gzip
 import json
 from itertools import cycle
 from typing import Iterator, Iterable
@@ -61,7 +62,8 @@ class RedditDataset(IterableDataset):
 
     def __iter__(self) -> Iterator[tuple[str, str]]:
         for file in self.files:
-            with open(file, "rt") as f_in:
+            zero_rank_info(f"Reading file: {file}")
+            with gzip.open(file, "rt") as f_in:
                 for line in f_in:
                     sample = json.loads(line)
                     utterances = sample["thread"]

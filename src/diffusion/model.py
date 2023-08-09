@@ -72,13 +72,14 @@ class DiDi(LightningModule):
         dec_dim: int,
         vocabulary_size: int,
         freeze_encoder: bool,
-        tie_weights: bool,
         *,
         diffusion_steps: int,
         schedule: str,
         step_freq: int,
         pad_idx: int,
+        tie_weights: bool = False,
         lr: float = 0.0001,
+        weight_decay: float = 0.0,
         warmup_steps: int = 0,
         min_lr: float = None,
         sampling_mode: str = "ddpm",
@@ -96,13 +97,7 @@ class DiDi(LightningModule):
         self.decoder_dim = dec_dim
 
         self.emb = nn.Embedding(vocabulary_size, dec_dim, padding_idx=pad_idx)
-        # self.time_embeds = nn.Embedding(diffusion_steps + 1, dec_dim)
-        self.time_embeds = nn.Sequential(
-            nn.Embedding(diffusion_steps + 1, dec_dim),
-            nn.Linear(dec_dim, dec_dim * 4),
-            nn.SiLU(),
-            nn.Linear(dec_dim * 4, dec_dim),
-        )
+        self.time_embeds = nn.Embedding(diffusion_steps + 1, dec_dim)
 
         self.sampling_mode = sampling_mode
         self.s_churn = s_churn
@@ -127,14 +122,18 @@ class DiDi(LightningModule):
         self.register_buffer("std_0", std_0)
         self.sigmas: torch.Tensor
 
-        self.lr, self.warmup, self.min_lr = lr, warmup_steps, min_lr
+        self.lr = lr
+        self.warmup = warmup_steps
+        self.min_lr = min_lr
+        self.weight_decay = weight_decay
 
         self.val_ce: list[float] = []
         self.val_acc: list[float] = []
         self.batch_decoder = batch_decoder
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), lr=1.0)  # Fully control LR from scheduler
+        # Fully control LR from scheduler
+        optimizer = torch.optim.AdamW(self.parameters(), lr=1.0, weight_decay=self.weight_decay)
         scheduler_lambda = partial(rsqrt_with_warmup, max_lr=self.lr, min_lr=self.min_lr, warmup=self.warmup)
         lr_scheduler_config = {
             "scheduler": torch.optim.lr_scheduler.LambdaLR(optimizer, scheduler_lambda),
@@ -209,7 +208,7 @@ class DiDi(LightningModule):
         ).mean()
 
         noise, sigma_T = torch.randn_like(x_0), self.sigmas[-1]
-        x_T = scale_input(x_0 + sigma_T * noise, sigma_T)
+        x_T = scale_input(x_0, sigma_T)
         t_T_loss = (x_T**2 * non_pad_mask).mean()
 
         loss = mse + ce + t_T_loss
@@ -252,11 +251,11 @@ def rsqrt_with_warmup(step: int, max_lr: float, min_lr: float, warmup: int) -> f
     """Scheduler for learning rate with a form of reverse sqrt (known as Noam favorite scheduler):
         `lr_t = max_lr * sqrt(1 / t)`
 
-    Warm-up increases learning rate from 0 with square root form and then smoothly decay with reverse square root.
+    Warm-up increases learning rate from 0 with a square root form and then smoothly decays with reverse square root.
         `lr_t = max_lr * sqrt(t / warmup)` if t <= warmup
         `lr_t = max_lr * sqrt(warmup / t)` if t > warmup
 
-    Also, there is control of minimum learning rate
+    Also, there is control of the minimum learning rate
 
     :param step: current step
     :param max_lr: maximum learning rate

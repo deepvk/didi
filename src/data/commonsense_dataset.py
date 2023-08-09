@@ -1,3 +1,4 @@
+import gzip
 import json
 from typing import Iterator
 
@@ -47,13 +48,16 @@ class CommonSenseDataset(IterableDataset):
         return self.context_tokenizer.pad_token_id
 
     def __iter__(self) -> Iterator[tuple[str, str]]:
+        n_epochs = 0
         while True:
+            zero_rank_info(f"Start epoch {n_epochs}")
             with open(self.file, "rt") as f_in:
                 for line in f_in:
                     sample = json.loads(line)
                     yield self.preprocess(sample["src"], sample["trg"])
             if not self.infinite:
                 break
+            n_epochs += 1
 
     def collate_fn(self, samples: list[tuple[str, str]]):
         str_contexts, str_replies = zip(*samples)
