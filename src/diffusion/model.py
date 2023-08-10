@@ -79,7 +79,7 @@ class DiDi(LightningModule):
         pad_idx: int,
         bos_idx: int,
         eos_idx: int,
-        context_dropout_prob: bool = 0.0,
+        context_dropout_prob: float = 0.0,
         guidance_strength: float = 0.0,
         tie_weights: bool = False,
         lr: float = 0.0001,
