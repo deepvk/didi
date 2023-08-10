@@ -4,18 +4,31 @@ from src.diffusion.utils import get_euler_variables, scale_input
 
 
 @torch.no_grad()
-def sample(raw_context, model, mode, step_freq, tokenizer=None, max_len=-1, raw_output=False, skip_special=True):
+def sample(
+    raw_context,
+    model,
+    mode,
+    step_freq,
+    guidance_strength=0.0,
+    tokenizer=None,
+    max_len=-1,
+    raw_output=False,
+    skip_special=True,
+):
     input_ids = raw_context.input_ids
     emb = model.emb(input_ids)[:, :max_len]
 
     x_t = torch.randn_like(emb) * model.sigmas[-1]
 
     cached_context = None
+    empty_cached_context = None
     ones = torch.ones((emb.shape[0], 1), dtype=torch.long, device=emb.device)
     noise = torch.empty_like(emb)
 
     if mode == "ddpm":
-        logits = sample_ddpm(model, x_t, raw_context, cached_context, noise, ones, step_freq)
+        logits = sample_ddpm(
+            model, x_t, raw_context, cached_context, empty_cached_context, noise, ones, step_freq, guidance_strength
+        )
     elif mode == "euler":
         logits = sample_euler(model, x_t, raw_context, cached_context, noise, ones, step_freq)
     else:
@@ -33,31 +46,46 @@ def sample(raw_context, model, mode, step_freq, tokenizer=None, max_len=-1, raw_
     return select_reply(replies)
 
 
-def sample_ddpm(model, x_t, raw_context, cached_context, noise, ones, step_freq):
+def guided_step(model, x_t, t, raw_context, cached_context, empty_cached_context, ones, guidance_strength):
+    x_0, cached_context = model(
+        encoder_input_ids=raw_context.input_ids,
+        encoder_attention_mask=raw_context.attention_mask,
+        decoder_inputs_embeds=x_t,
+        time_ids=t * ones,
+        context=cached_context,
+    )
+
+    if guidance_strength:
+        empty_context = model.dropout_context(raw_context, 1)
+        x_0_uncond, empty_cached_context = model(
+            encoder_input_ids=empty_context.input_ids,
+            encoder_attention_mask=empty_context.attention_mask,
+            decoder_inputs_embeds=x_t,
+            time_ids=t * ones,
+            context=empty_cached_context,
+        )
+        x_0 = (1 + guidance_strength) * x_0 - guidance_strength * x_0_uncond
+    return x_0, cached_context, empty_cached_context
+
+
+def sample_ddpm(
+    model, x_t, raw_context, cached_context, empty_cached_context, noise, ones, step_freq, guidance_strength
+):
     diffusion_steps = model.diffusion_steps
     timesteps = range(diffusion_steps, 1, -step_freq)
 
     x_t = scale_input(x_t, model.sigmas[-1])
 
     for t in timesteps:
-        x_0, cached_context = model(
-            encoder_input_ids=raw_context.input_ids,
-            encoder_attention_mask=raw_context.attention_mask,
-            decoder_inputs_embeds=x_t,
-            time_ids=t * ones,
-            context=cached_context,
+        x_0, cached_context, empty_cached_context = guided_step(
+            model, x_t, t, raw_context, cached_context, empty_cached_context, ones, guidance_strength
         )
 
         sigma_t = model.sigmas[max(t - step_freq, 1)]
         noise.normal_(0, 1)
         x_t = scale_input(x_0 + sigma_t * noise, sigma_t)
 
-    x_0, _ = model(
-        encoder_attention_mask=raw_context.attention_mask,
-        decoder_inputs_embeds=x_t,
-        time_ids=ones,
-        context=cached_context,
-    )
+    x_0, *_ = guided_step(model, x_t, 1, raw_context, cached_context, empty_cached_context, ones, guidance_strength)
 
     logits = model.classifier(x_0)
     return logits
