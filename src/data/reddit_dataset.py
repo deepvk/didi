@@ -71,7 +71,7 @@ class RedditDataset(IterableDataset):
     def __iter__(self) -> Iterator[tuple[str, str]]:
         for file in self.files:
             zero_rank_info(f"Reading file: {file}")
-            with open(file, "rt") as f_in:
+            with gzip.open(file, "rt") as f_in:
                 for line in f_in:
                     sample = json.loads(line)
                     utterances = sample["thread"]

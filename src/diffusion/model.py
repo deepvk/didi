@@ -174,7 +174,6 @@ class DiDi(LightningModule):
         empty_mask[1] = 1
 
         condition = torch.rand((batch_size, 1), device=context.input_ids.device) < dropout_prob
-
         context.input_ids = torch.where(condition, empty_condition, context.input_ids)
         context.attention_mask = torch.where(condition, empty_mask, context.attention_mask)
         return context
