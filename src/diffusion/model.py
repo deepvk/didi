@@ -81,6 +81,7 @@ class DiDi(LightningModule):
         lr: float = 0.0001,
         weight_decay: float = 0.0,
         warmup_steps: int = 0,
+        decay_range: tuple = None,
         min_lr: float = None,
         sampling_mode: str = "ddpm",
         s_churn: float = 0.0,
@@ -126,6 +127,7 @@ class DiDi(LightningModule):
         self.warmup = warmup_steps
         self.min_lr = min_lr
         self.weight_decay = weight_decay
+        self.decay_range = decay_range
 
         self.val_ce: list[float] = []
         self.val_acc: list[float] = []
@@ -134,7 +136,10 @@ class DiDi(LightningModule):
     def configure_optimizers(self):
         # Fully control LR from scheduler
         optimizer = torch.optim.AdamW(self.parameters(), lr=1.0, weight_decay=self.weight_decay)
-        scheduler_lambda = partial(rsqrt_with_warmup, max_lr=self.lr, min_lr=self.min_lr, warmup=self.warmup)
+        if self.decay_range is not None:
+            scheduler_lambda = partial(linear, max_lr=self.lr, min_lr=self.min_lr, decay_range=self.decay_range)
+        else:
+            scheduler_lambda = partial(rsqrt_with_warmup, max_lr=self.lr, min_lr=self.min_lr, warmup=self.warmup)
         lr_scheduler_config = {
             "scheduler": torch.optim.lr_scheduler.LambdaLR(optimizer, scheduler_lambda),
             "interval": "step",
@@ -273,4 +278,14 @@ def rsqrt_with_warmup(step: int, max_lr: float, min_lr: float, warmup: int) -> f
 
     if min_lr is not None:
         lr = max(lr, min_lr)
+    return lr
+
+
+def linear(step: int, max_lr: float, min_lr: float, decay_range: tuple) -> float:
+    s1, s2 = decay_range
+    if step < s1:
+        return min_lr
+    if step > s2:
+        return max_lr
+    lr = (max_lr - min_lr) * (s2 - step) / (s2 - s1) + min_lr
     return lr
