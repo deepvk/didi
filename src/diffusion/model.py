@@ -167,16 +167,16 @@ class DiDi(LightningModule):
         out_context = context.copy()
         batch_size = context.input_ids.shape[0]
 
-        empty_condition = torch.full_like(context.input_ids[0], self.pad_idx)
+        empty_context = torch.full_like(context.input_ids[0], self.pad_idx)
         empty_mask = torch.zeros_like(context.attention_mask[0])
-        empty_condition[0] = self.bos_idx
-        empty_condition[1] = self.eos_idx
+        empty_context[0] = self.bos_idx
+        empty_context[1] = self.eos_idx
         empty_mask[0] = 1
         empty_mask[1] = 1
 
         condition = torch.rand((batch_size, 1), device=context.input_ids.device) < dropout_prob
-        out_context.input_ids = torch.where(condition, empty_condition, context.input_ids)
-        out_context.attention_mask = torch.where(condition, empty_mask, context.attention_mask)
+        out_context["input_ids"] = torch.where(condition, empty_context, context.input_ids)
+        out_context["attention_mask"] = torch.where(condition, empty_mask, context.attention_mask)
         return out_context
 
     def forward(
