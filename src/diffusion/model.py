@@ -164,6 +164,7 @@ class DiDi(LightningModule):
         return context
 
     def dropout_context(self, context, dropout_prob):
+        out_context = context.copy()
         batch_size = context.input_ids.shape[0]
 
         empty_condition = torch.full_like(context.input_ids[0], self.pad_idx)
@@ -174,9 +175,9 @@ class DiDi(LightningModule):
         empty_mask[1] = 1
 
         condition = torch.rand((batch_size, 1), device=context.input_ids.device) < dropout_prob
-        context.input_ids = torch.where(condition, empty_condition, context.input_ids)
-        context.attention_mask = torch.where(condition, empty_mask, context.attention_mask)
-        return context
+        out_context.input_ids = torch.where(condition, empty_condition, context.input_ids)
+        out_context.attention_mask = torch.where(condition, empty_mask, context.attention_mask)
+        return out_context
 
     def forward(
         self,

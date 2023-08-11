@@ -22,6 +22,7 @@ def configure_arg_parser():
     parser.add_argument("seeds", nargs="*", type=int, help="Random seeds")
     parser.add_argument("-m", "--mode", type=str, default="ddpm", help="Sampling mode")
     parser.add_argument("-f", "--freq", type=int, default=1, help="Sampling step frequency")
+    parser.add_argument("-s", "--guidance_strength", type=float, default=0.0, help="Guidance strength")
     parser.add_argument("-i", "--dataset_dir", type=str, help="Input file for generation")
     parser.add_argument("-o", "--output_dir", type=str, help="Output directory for sampling result")
     parser.add_argument("-d", "--device_id", type=int, default=0, help="GPU device id")
@@ -34,6 +35,7 @@ def main(
     seeds: list[int],
     mode: str,
     freq: int,
+    guidance_strength: float,
     dataset_dir: str,
     output_dir: str,
     device_id: int,
@@ -52,7 +54,7 @@ def main(
 
     device = f"cuda:{device_id}" if torch.cuda.is_available() else "cpu"
 
-    _, _, enc_dim, dec_dim = get_components(config.base_name)
+    _, _, enc_dim, dec_dim = get_components(config.base_name, config.encoder.pretrained, **config.decoder)
     model = DiDi.load_from_checkpoint(model_path, enc_dim=enc_dim, dec_dim=dec_dim, map_location=device)
     model.eval()
 
@@ -64,7 +66,7 @@ def main(
                 context.append(utterance)
                 joined_context, _ = preprocess(context, "")
                 raw_context = context_tokenizer(joined_context, **tokenizer_kwargs).to(device)
-                reply = sample(raw_context, model, mode, freq, context_tokenizer)[0]
+                reply = sample(raw_context, model, mode, freq, guidance_strength, context_tokenizer)[0]
                 context.append(reply)
                 print("DiDi:", reply)
             except KeyboardInterrupt:
