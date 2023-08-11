@@ -77,6 +77,10 @@ class DiDi(LightningModule):
         schedule: str,
         step_freq: int,
         pad_idx: int,
+        bos_idx: int,
+        eos_idx: int,
+        context_dropout_prob: float = 0.0,
+        guidance_strength: float = 0.0,
         tie_weights: bool = False,
         lr: float = 0.0001,
         weight_decay: float = 0.0,
@@ -91,10 +95,16 @@ class DiDi(LightningModule):
         super().__init__()
         self.save_hyperparameters(ignore=[encoder, decoder])
         self.diffusion_steps = diffusion_steps
-        self.pad_idx = pad_idx
         self.step_freq = step_freq
         self.encoder_dim = enc_dim
         self.decoder_dim = dec_dim
+
+        self.dropout_prob = context_dropout_prob
+        self.w = guidance_strength
+
+        self.pad_idx = pad_idx
+        self.bos_idx = bos_idx
+        self.eos_idx = eos_idx
 
         self.emb = nn.Embedding(vocabulary_size, dec_dim, padding_idx=pad_idx)
         self.time_embeds = nn.Embedding(diffusion_steps + 1, dec_dim)
@@ -153,6 +163,22 @@ class DiDi(LightningModule):
             context = self.adapter(context)
         return context
 
+    def dropout_context(self, context, dropout_prob):
+        out_context = context.copy()
+        batch_size = context.input_ids.shape[0]
+
+        empty_context = torch.full_like(context.input_ids[0], self.pad_idx)
+        empty_mask = torch.zeros_like(context.attention_mask[0])
+        empty_context[0] = self.bos_idx
+        empty_context[1] = self.eos_idx
+        empty_mask[0] = 1
+        empty_mask[1] = 1
+
+        condition = torch.rand((batch_size, 1), device=context.input_ids.device) < dropout_prob
+        out_context["input_ids"] = torch.where(condition, empty_context, context.input_ids)
+        out_context["attention_mask"] = torch.where(condition, empty_mask, context.attention_mask)
+        return out_context
+
     def forward(
         self,
         encoder_input_ids: torch.Tensor = None,
@@ -183,6 +209,10 @@ class DiDi(LightningModule):
 
     def training_step(self, batch: list, batch_idx: int):
         raw_context, target = batch
+
+        if self.dropout_prob:
+            raw_context = self.dropout_context(raw_context, self.dropout_prob)
+
         emb = self.emb(target.input_ids)
         x_0 = get_x0(emb, self.std_0)
         noise = torch.randn_like(x_0)
@@ -224,7 +254,15 @@ class DiDi(LightningModule):
     def validation_step(self, batch: list, batch_idx: int):
         raw_context, target = batch
         max_trg_len = target.input_ids.shape[1]
-        logits = sample(raw_context, self, self.sampling_mode, self.step_freq, max_len=max_trg_len, raw_output=True)
+        logits = sample(
+            raw_context,
+            self,
+            self.sampling_mode,
+            self.step_freq,
+            guidance_strength=self.w,
+            max_len=max_trg_len,
+            raw_output=True,
+        )
         predictions = logits.argmax(-1)
 
         self.val_ce.append(calculate_batch_ce(logits, target.input_ids, target.attention_mask).item())

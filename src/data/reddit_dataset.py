@@ -60,6 +60,14 @@ class RedditDataset(IterableDataset):
     def pad_idx(self) -> int:
         return self.context_tokenizer.pad_token_id
 
+    @property
+    def bos_idx(self) -> int:
+        return self.context_tokenizer.bos_token_id or self.context_tokenizer.cls_token_id
+
+    @property
+    def eos_idx(self) -> int:
+        return self.context_tokenizer.eos_token_id or self.context_tokenizer.sep_token_id
+
     def __iter__(self) -> Iterator[tuple[str, str]]:
         for file in self.files:
             zero_rank_info(f"Reading file: {file}")
