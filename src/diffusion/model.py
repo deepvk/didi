@@ -281,11 +281,10 @@ def rsqrt_with_warmup(step: int, max_lr: float, min_lr: float, warmup: int) -> f
     return lr
 
 
-def linear(step: int, max_lr: float, min_lr: float, decay_range: tuple) -> float:
-    s1, s2 = decay_range
-    if step < s1:
-        return min_lr
-    if step > s2:
+def linear(step: int, max_lr: float, min_lr: float, warmup: int, decay_range: int) -> float:
+    if step < warmup:
         return max_lr
-    lr = (max_lr - min_lr) * (s2 - step) / (s2 - s1) + min_lr
+    if step > decay_range:
+        return min_lr
+    lr = (max_lr - min_lr) * (decay_range - step) / (decay_range - warmup) + min_lr
     return lr
