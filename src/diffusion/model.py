@@ -77,12 +77,8 @@ class DiDi(LightningModule):
         schedule: str,
         step_freq: int,
         pad_idx: int,
+        opt_kwargs: dict,
         tie_weights: bool = False,
-        lr: float = 0.0001,
-        weight_decay: float = 0.0,
-        warmup_steps: int = 0,
-        decay_range: tuple = None,
-        min_lr: float = None,
         sampling_mode: str = "ddpm",
         s_churn: float = 0.0,
         s_tmin: float = 0.0,
@@ -123,11 +119,7 @@ class DiDi(LightningModule):
         self.register_buffer("std_0", std_0)
         self.sigmas: torch.Tensor
 
-        self.lr = lr
-        self.warmup = warmup_steps
-        self.min_lr = min_lr
-        self.weight_decay = weight_decay
-        self.decay_range = decay_range
+        self.opt_kwargs = opt_kwargs
 
         self.val_ce: list[float] = []
         self.val_acc: list[float] = []
@@ -135,11 +127,22 @@ class DiDi(LightningModule):
 
     def configure_optimizers(self):
         # Fully control LR from scheduler
-        optimizer = torch.optim.AdamW(self.parameters(), lr=1.0, weight_decay=self.weight_decay)
-        if self.decay_range is not None:
-            scheduler_lambda = partial(linear, max_lr=self.lr, min_lr=self.min_lr, decay_range=self.decay_range)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=1.0, weight_decay=self.opt_kwargs["weight_decay"])
+        if self.opt_kwargs["scheduler"] == "linear":
+            scheduler_lambda = partial(
+                linear,
+                max_lr=self.opt_kwargs["lr"],
+                min_lr=self.opt_kwargs["min_lr"],
+                warmup=self.opt_kwargs["warmup_steps"],
+                decay_range=self.opt_kwargs["decay_range"],
+            )
         else:
-            scheduler_lambda = partial(rsqrt_with_warmup, max_lr=self.lr, min_lr=self.min_lr, warmup=self.warmup)
+            scheduler_lambda = partial(
+                rsqrt_with_warmup,
+                max_lr=self.opt_kwargs["lr"],
+                min_lr=self.opt_kwargs["min_lr"],
+                warmup=self.opt_kwargs["warmup_steps"],
+            )
         lr_scheduler_config = {
             "scheduler": torch.optim.lr_scheduler.LambdaLR(optimizer, scheduler_lambda),
             "interval": "step",
@@ -282,6 +285,8 @@ def rsqrt_with_warmup(step: int, max_lr: float, min_lr: float, warmup: int) -> f
 
 
 def linear(step: int, max_lr: float, min_lr: float, warmup: int, decay_range: int) -> float:
+    if min_lr is None:
+        raise ValueError("min_lr must be set for the linear scheduler")
     if step < warmup:
         return max_lr
     if step > decay_range:
