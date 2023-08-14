@@ -26,7 +26,10 @@ didi:
   schedule: "sqrt"
   sampling_mode: "ddpm"
   step_freq: 1
+
+optimizer:
   lr: 1.5e-4
+  scheduler: rsqrt
   warmup_steps: 10_000
   min_lr: None
   weight_decay: 0.0
