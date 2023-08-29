@@ -31,10 +31,12 @@ def scale_input(input, sigma_t):
     return input / (sigma_t**2 + 1) ** 0.5
 
 
-def get_diffusion_variables(diffusion_steps: int, x_0: torch.Tensor, sigmas: torch.Tensor, noise: torch.Tensor):
+def get_diffusion_variables(
+    diffusion_steps: int, x_0: torch.Tensor, sigmas: torch.Tensor, noise: torch.Tensor, noise_factor: float = 1
+):
     t = torch.randint(1, diffusion_steps + 1, size=(x_0.shape[0], 1), device=x_0.device)
     sigma_t = sigmas[t].view(-1, 1, 1)
-    x_t = scale_input(x_0 + sigma_t * noise, sigma_t)
+    x_t = scale_input(x_0 + sigma_t * noise * noise_factor**2, sigma_t)
     return x_t, t
 
 

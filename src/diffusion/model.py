@@ -78,6 +78,8 @@ class DiDi(LightningModule):
         step_freq: int,
         pad_idx: int,
         opt_kwargs: dict,
+        noise_factor: float = 1.0,
+        anchor_loss: bool = False,
         tie_weights: bool = False,
         sampling_mode: str = "ddpm",
         s_churn: float = 0.0,
@@ -88,10 +90,13 @@ class DiDi(LightningModule):
         super().__init__()
         self.save_hyperparameters(ignore=[encoder, decoder])
         self.diffusion_steps = diffusion_steps
-        self.pad_idx = pad_idx
+        self.noise_factor = noise_factor
+        self.anchor_loss = anchor_loss
         self.step_freq = step_freq
+
         self.encoder_dim = enc_dim
         self.decoder_dim = dec_dim
+        self.pad_idx = pad_idx
 
         self.emb = nn.Embedding(vocabulary_size, dec_dim, padding_idx=pad_idx)
         self.time_embeds = nn.Embedding(diffusion_steps + 1, dec_dim)
@@ -196,7 +201,7 @@ class DiDi(LightningModule):
         noise = torch.randn_like(x_0)
 
         # x: [batch size; seq len; emb dim], t: [batch size]
-        x_t, t = get_diffusion_variables(self.diffusion_steps, x_0, self.sigmas, noise)
+        x_t, t = get_diffusion_variables(self.diffusion_steps, x_0, self.sigmas, noise, self.noise_factor)
 
         x_0_hat, _ = self(
             encoder_input_ids=raw_context.input_ids,
@@ -205,7 +210,10 @@ class DiDi(LightningModule):
             time_ids=t,
         )  # [batch size; seq len; emb dim]
 
-        logits = self.classifier(x_0)  # [batch size; seq len; vocab size]
+        if self.anchor_loss:
+            logits = self.classifier(x_0_hat)  # [batch size; seq len; vocab size]
+        else:
+            logits = self.classifier(x_0)
         ce = calculate_batch_ce(logits, target.input_ids, target.attention_mask)
 
         non_pad_mask = target.attention_mask.unsqueeze(-1)
