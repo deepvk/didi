@@ -4,11 +4,13 @@ from src.diffusion.utils import get_euler_variables, scale_input
 
 
 @torch.no_grad()
-def sample(raw_context, model, mode, step_freq, tokenizer=None, max_len=-1, raw_output=False, skip_special=True):
+def sample(
+    raw_context, model, mode, step_freq, noise_factor=1, tokenizer=None, max_len=-1, raw_output=False, skip_special=True
+):
     input_ids = raw_context.input_ids
     emb = model.emb(input_ids)[:, :max_len]
 
-    x_t = torch.randn_like(emb) * model.sigmas[-1]
+    x_t = torch.randn_like(emb) * model.sigmas[-1] * noise_factor**2
 
     cached_context = None
     ones = torch.ones((emb.shape[0], 1), dtype=torch.long, device=emb.device)
