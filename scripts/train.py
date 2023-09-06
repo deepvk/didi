@@ -8,6 +8,7 @@ from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
 
 from src.data.commonsense_dataset import CommonSenseDataset
+from src.data.dialogsum_dataset import DialogSumDataset
 from src.data.distributed_dataset import DistributedIterableDataset
 from src.data.reddit_dataset import RedditDataset
 from src.diffusion.model import DiDi
@@ -22,11 +23,19 @@ def configure_arg_parser():
     parser.add_argument("dataset_dir", type=str, help="Path to dataset directory")
     parser.add_argument("--ckpt_dir", type=str, help="Path to checkpoint directory.")
     parser.add_argument("--resume", type=str, help="Path to checkpoint file to resume training.")
-    parser.add_argument("--commonsense", action="store_true", help="Whether to use Reddit or CommonSense dataset.")
+    parser.add_argument("--commonsense", action="store_true", help="Whether to use CommonSense dataset.")
+    parser.add_argument("--dialogsum", action="store_true", help="Whether to use DialogSum dataset.")
     return parser
 
 
-def main(config_path: str, dataset_dir: str, ckpt_dir: str = None, resume: str = None, commonsense: bool = False):
+def main(
+    config_path: str,
+    dataset_dir: str,
+    ckpt_dir: str = None,
+    resume: str = None,
+    commonsense: bool = False,
+    dialogsum: bool = False,
+):
     filter_warnings()
     setup_logger()
     environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -42,6 +51,13 @@ def main(config_path: str, dataset_dir: str, ckpt_dir: str = None, resume: str =
         )
         val_dataset = CommonSenseDataset(
             join(dataset_dir, "valid.jsonl"), config.base_name, infinite=False, **config.dataset
+        )
+    elif dialogsum:
+        train_dataset = DialogSumDataset(
+            join(dataset_dir, "train.csv"), config.base_name, infinite=True, **config.dataset
+        )
+        val_dataset = DialogSumDataset(
+            join(dataset_dir, "validation.csv"), config.base_name, infinite=True, **config.dataset
         )
     else:
         train_files_glob = join(dataset_dir, "train", "train.jsonl-*")
