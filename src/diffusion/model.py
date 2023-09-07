@@ -94,6 +94,9 @@ class DiDi(LightningModule):
         self.anchor_loss = anchor_loss
         self.step_freq = step_freq
 
+        if noise_factor != 1 and not anchor_loss:
+            zero_rank_info(f"WARNING: using noise factor, but without anchor loss, probably will collapse.")
+
         self.encoder_dim = enc_dim
         self.decoder_dim = dec_dim
         self.pad_idx = pad_idx
@@ -227,7 +230,9 @@ class DiDi(LightningModule):
         x_T = scale_input(x_0, sigma_T)
         t_T_loss = (x_T**2 * non_pad_mask).mean()
 
-        loss = mse + ce + t_T_loss
+        loss = mse + ce
+        if not self.anchor_loss:
+            loss += t_T_loss
 
         with torch.no_grad():
             logits_hat = self.classifier(x_0_hat)

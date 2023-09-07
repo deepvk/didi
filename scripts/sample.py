@@ -25,6 +25,7 @@ def configure_arg_parser():
     parser.add_argument("-i", "--dataset_dir", type=str, help="Input file for generation")
     parser.add_argument("-o", "--output_dir", type=str, help="Output directory for sampling result")
     parser.add_argument("-d", "--device_id", type=int, default=0, help="GPU device id")
+    parser.add_argument("--batch_size", type=int, default=512, help="Batch size")
     return parser
 
 
@@ -37,6 +38,7 @@ def main(
     dataset_dir: str,
     output_dir: str,
     device_id: int,
+    batch_size: int,
 ):
     config = OmegaConf.load(config_path)
 
@@ -70,30 +72,32 @@ def main(
             except KeyboardInterrupt:
                 print("\nDiDi: Get back soon!")
                 break
-    else:
-        test_files_glob = join(dataset_dir, "test.jsonl")
-        test_dataset = CommonSenseDataset(test_files_glob, config.base_name, **config.dataset)
-        test_dataloader = DataLoader(
-            test_dataset,
-            batch_size=config.val_batch_size,
-            collate_fn=test_dataset.test_collate_fn,
-            pin_memory=True,
-            num_workers=1,
-        )
+        return
 
-        for seed in seeds:
-            seed_everything(seed)
+    test_files_glob = join(dataset_dir, "test.jsonl")
+    test_dataset = CommonSenseDataset(test_files_glob, config.base_name, **config.dataset)
+    test_dataloader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        collate_fn=test_dataset.test_collate_fn,
+        pin_memory=True,
+        num_workers=1,
+    )
 
-            with open(join(output_dir, f"seed{seed}_{mode}_freq{freq}.json"), "w") as f:
-                for batch in tqdm(test_dataloader):
-                    raw_context, context, target = batch
-                    raw_context = raw_context.to(device)
+    for seed in seeds:
+        seed_everything(seed)
+
+        with open(join(output_dir, f"seed{seed}_{mode}_freq{freq}.json"), "w") as f:
+            for batch in tqdm(test_dataloader):
+                raw_context, context, target = batch
+                raw_context = raw_context.to(device)
+                with torch.inference_mode():
                     predictions = sample(
-                        raw_context, model, mode, freq, test_dataset.reply_tokenizer, skip_special=False
+                        raw_context, model, mode, freq, tokenizer=test_dataset.reply_tokenizer, skip_special=False
                     )
 
-                    for recov, ref, src in zip(predictions, target, context):
-                        print(json.dumps({"recover": recov, "reference": ref, "source": src}), file=f)
+                for recov, ref, src in zip(predictions, target, context):
+                    print(json.dumps({"recover": recov, "reference": ref, "source": src}), file=f)
 
 
 if __name__ == "__main__":
