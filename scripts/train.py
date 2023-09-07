@@ -57,7 +57,7 @@ def main(
             join(dataset_dir, "train.csv"), config.base_name, infinite=True, **config.dataset
         )
         val_dataset = DialogSumDataset(
-            join(dataset_dir, "validation.csv"), config.base_name, infinite=True, **config.dataset
+            join(dataset_dir, "validation.csv"), config.base_name, infinite=False, **config.dataset
         )
     else:
         train_files_glob = join(dataset_dir, "train", "train.jsonl-*")
