@@ -109,6 +109,7 @@ def main(
         save_interval=config.save_interval,
         ckpt_dir=ckpt_dir,
         resume=resume,
+        project_name=config.project_name,
     )
 
 

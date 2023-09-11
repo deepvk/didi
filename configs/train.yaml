@@ -4,6 +4,8 @@ seed: 0xBADB01
 #base_name: "google/t5-v1_1-xl"
 base_name: "bert-base-uncased"
 
+project_name: "didi"
+
 batch_size: 256
 val_batch_size: 256
 save_interval: 10_000
@@ -26,7 +28,7 @@ didi:
   sampling_mode: "ddpm"
   step_freq: 1
   noise_factor: 1
-  anchor_loss: False
+  anchor_loss: True
 
 optimizer:
   weight_decay: 0.01
