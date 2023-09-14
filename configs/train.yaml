@@ -28,7 +28,7 @@ didi:
   sampling_mode: "ddpm"
   step_freq: 1
   noise_factor: 1
-  anchor_loss: True
+  anchor_loss: False
 
 optimizer:
   weight_decay: 0.01
